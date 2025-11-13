@@ -1,0 +1,8 @@
+fastapi
+pydantic
+jinja2
+streamlit
+pytest
+coverage
+cppcheck
+transformers

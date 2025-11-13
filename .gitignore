@@ -1,0 +1,10 @@
+__pycache__/
+*.pyc
+*.log
+*.env
+*.bin
+*.pt
+*.so
+*.o
+data/Outputs/
+data/models/
