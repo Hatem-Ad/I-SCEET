@@ -21,3 +21,6 @@ A shared **Chatbox** connects YOU ↔ ALL MODELS for interactive refinements.
 
 ## Repo Structure
 
+## Architecture
+![I-SCEET Architecture](docs/diagrams/I-SCEET_architecture.png)
+
