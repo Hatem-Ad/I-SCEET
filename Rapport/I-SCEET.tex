@@ -60,6 +60,88 @@ Dans les programmes aéronautiques, la collaboration entre équipes systèmes, s
 
 Ainsi, la toolchain I-SCEET constitue une base méthodologique robuste et moderne qui facilite la création, la vérification et la justification de logiciels embarqués critiques. Ce rapport présente l’architecture globale de la solution, ses objectifs techniques et les mécanismes permettant d’assurer une conformité continue tout au long du cycle de développement, conformément aux standards aéronautiques actuels.
 
+\section{Architecture Globale de I-SCEET}
+
+L’architecture globale de la toolchain \textbf{I-SCEET} repose sur une organisation structurée du processus de développement logiciel selon six modules principaux (M1 à M6).  
+Ces modules suivent rigoureusement le modèle en V appliqué en aéronautique, garantissant une cohérence complète entre exigences, conception, implémentation, vérification et justification de conformité.
+
+\subsection{Vue d’Ensemble du Modèle}
+
+L’architecture I-SCEET définit un flux méthodologique descendant (HLR → LLR → Code) et un flux de vérification ascendant (Tests → Vérification des exigences).  
+L’ensemble est supporté par un module de traçabilité central (M6), garantissant la conformité aux objectifs DO-178C.
+
+\vspace{0.3cm}
+\noindent L’organisation générale est la suivante :
+\begin{itemize}
+    \item \textbf{M1 : High-Level Requirements (HLR)} — définition des besoins avioniques et système,
+    \item \textbf{M2 : Low-Level Requirements (LLR)} — conception détaillée permettant une implémentation vérifiable,
+    \item \textbf{M3 : Code} — développement conforme aux règles critiques,
+    \item \textbf{M4 : Low-Level Tests (LLT)} — vérification unitaire et bas niveau,
+    \item \textbf{M5 : High-Level Tests (HLT)} — vérification fonctionnelle et intégration,
+    \item \textbf{M6 : Traçabilité} — cohérence et justification de l’ensemble du cycle.
+\end{itemize}
+
+\subsection{Description des Modules M1 à M6}
+
+\textbf{M1 — High-Level Requirements (HLR)} :  
+Décrit les exigences avioniques, système et fonctionnelles.  
+Il traduit les contraintes opérationnelles, les règles safety, et les interfaces système.
+
+\textbf{M2 — Low-Level Requirements (LLR)} :  
+Décompose les HLR en exigences détaillées.  
+Contient le design logique, les algorithmes, les états, les interfaces internes et les règles d’implémentation.
+
+\textbf{M3 — Code} :  
+Implémentation conforme aux LLR, aux règles MISRA, aux normes de sûreté et aux contraintes matérielles.  
+Le code doit être déterministe, vérifiable et pleinement justifiable.
+
+\textbf{M4 — Low-Level Tests (LLT)} :  
+Tests unitaires et bas niveau permettant de vérifier chaque LLR et chaque unité de code.  
+Correspond aux objectifs DO-178C pour la vérification de structure et de comportement.
+
+\textbf{M5 — High-Level Tests (HLT)} :  
+Vérification fonctionnelle des HLR.  
+Concerne les scénarios d’intégration, les tests d’interface et les comportements avioniques attendus.
+
+\textbf{M6 — Traçabilité} :  
+Module central assurant les liens bidirectionnels HLR <-> LLR <-> Code <-> LLT <-> HLT.  
+Produit le dossier de conformité et les éléments nécessaires aux audits FAA/EASA.
+
+\subsection{Relations et Flux d’Information}
+
+L’architecture impose :
+\begin{itemize}
+    \item un flux \textbf{descendant} : HLR → LLR → Code,
+    \item un flux \textbf{ascendant} : LLT → HLT → Vérification des exigences,
+    \item des \textbf{boucles de rétroaction} pour correction (revues indépendantes),
+    \item une cohérence systématique entre tous les artefacts.
+\end{itemize}
+
+Ces relations sont conçues pour éviter les ambiguïtés, garantir la vérifiabilité et réduire les risques de non-conformités en certification.
+
+\subsection{Intégration dans le Modèle en V Aéronautique}
+
+L’architecture I-SCEET reprend les principes du modèle en V :
+\begin{itemize}
+    \item la partie gauche du V couvre l’analyse et la conception (M1–M2),
+    \item le bas du V couvre l’implémentation (M3),
+    \item la partie droite du V couvre la vérification (M4–M5),
+    \item le tout est connecté et justifié via la traçabilité (M6).
+\end{itemize}
+
+Cette organisation répond directement aux attentes DO-178C en matière de séparation des activités, d’indépendance, de vérification et de justification de conformité.
+
+\subsection{Rôle de l’Architecture dans la Conformité DO-178C}
+
+L’architecture globale I-SCEET assure :
+\begin{itemize}
+    \item une correspondance directe entre chaque objectif DO-178C et un artefact,
+    \item une justification complète dans les dossiers de certification,
+    \item une indépendance claire entre développement et vérification,
+    \item un support naturel pour la couverture structurelle (jusqu’au MC/DC pour DAL A).
+\end{itemize}
+
+Elle constitue ainsi la fondation méthodologique permettant de produire un logiciel avionique critiquable, vérifiable et certifiable.
 
 
 \section{Some examples to get started}
