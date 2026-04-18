@@ -1,26 +1,53 @@
 # I-SCEET
-Intelligent Safety-Critical Environment Engineering Toolchain  
-Hybrid AI + Deterministic Architecture for DO-178C Automation
 
-## Architecture Overview
+**Intelligent Safety-Critical Environment Engineering Toolchain**
 
-You (Engineer) provide:
-- PDS (Product Design Specification)
-- System Architecture
-- Hardware Documentation (SoC, memory map, interfaces)
+I-SCEET is a framework-oriented project for supporting the development of safety-critical software engineering artifacts through an intelligent and structured workflow inspired by aerospace practices.
 
-Pipeline:
-1. **Model 1 → HLR**
-2. **Model 2 → LLR + Software Architecture**
-3. **Model 3 → Code Generation**
-4. **Model 4 → LLT (Unit Test Scripts + Test Cases)**
-5. **Model 5 → HLT (High-Level Test Scripts + Test Cases)**
-6. **Model 6 → Traceability Matrix (HLR↔LLR↔Code↔LLT↔HLT)**
+## Project Vision
 
-A shared **Chatbox** connects YOU ↔ ALL MODELS for interactive refinements.
+The main objective of I-SCEET is to help generate and organize key engineering artifacts such as:
 
-## Repo Structure
+- High-Level Requirements (HLR)
+- Low-Level Requirements (LLR)
+- Source Code
+- Low-Level Tests (LLT)
+- High-Level Tests (HLT)
+- Traceability Matrices
+- DO-178C-like project documents
 
-## Architecture
-![I-SCEET Architecture](docs/diagrams/I-SCEET_architecture.png)
+I-SCEET is the core project.  
+Application examples such as STM32 bootloader and drivers are only initial case studies used to validate the approach.
 
+## Global Workflow
+
+The project follows this high-level pipeline:
+
+1. Input engineering context  
+   - Product Design Specification (PDS)  
+   - Hardware context  
+   - System architecture  
+
+2. Generate HLR  
+3. Generate LLR  
+4. Generate source code  
+5. Generate LLT  
+6. Generate HLT  
+7. Generate traceability artifacts  
+
+## Repository Structure
+
+```text
+I-SCEET/
+├── data/                    # Input and support data
+├── deterministic_core/      # Deterministic validation and generation layer
+├── docs/                    # Engineering, DO-178-like, templates, report
+├── examples/                # Case studies and demonstrations
+├── models/                  # AI-oriented generation models
+├── notebooks/               # Google Colab / experiments
+├── orchestrator/            # Workflow coordination and routing
+├── outputs/                 # Generated artifacts
+├── ui/                      # Future interface layer
+├── README.md
+├── requirements.txt
+└── LICENSE
