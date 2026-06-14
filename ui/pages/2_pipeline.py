@@ -35,10 +35,16 @@ MODULES = [
 
 # ── COLAB CONNECTION ──────────────────────────────────────────────────────────
 st.markdown("### 🔌 Colab Connection")
+
+import os
+from dotenv import load_dotenv
+load_dotenv()
+default_url = os.getenv("COLAB_URL", "")
+
 colab_url = st.text_input(
     "Colab URL (ngrok)",
     placeholder="https://xxxx.ngrok-free.app",
-    value=st.session_state.get("colab_url", "")
+    value=st.session_state.get("colab_url", default_url)  # ← changed
 )
 if colab_url:
     st.session_state["colab_url"] = colab_url
