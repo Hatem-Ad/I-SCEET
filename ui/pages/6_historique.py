@@ -64,7 +64,7 @@ for p in projects:
             if st.button("📂 Activer ce projet", key=f"activate_{p['id']}"):
                 st.session_state["active_project"] = p
                 st.success(f"✅ Projet **{p['name']}** activé !")
-                st.rerun()
+                st.switch_page("pages/2_pipeline.py")
 
         with col2:
             if st.button("📊 Voir TC", key=f"tc_{p['id']}"):
