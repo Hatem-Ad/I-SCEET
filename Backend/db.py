@@ -114,16 +114,39 @@ def delete_project(project_id):
     conn.close()
 
 
-def save_artifact(project_id, module, artifact_type, content, file_path=""):
+# ── ADD to save_artifact() — add version parameter ────────────────────────────
+# Replace the existing save_artifact function with this:
+
+def save_artifact(project_id: int, module: str, artifact_type: str,
+                  content: str, file_path: str = "", version: str = "1.0") -> int:
+    """Save artifact with version. Each call creates a new version row."""
     conn = get_connection()
     c = conn.cursor()
-    c.execute("INSERT INTO artifacts (project_id, module, type, content, file_path) VALUES (?, ?, ?, ?, ?)",
-              (project_id, module, artifact_type, content, file_path))
-    aid = c.lastrowid
+    c.execute(
+        """INSERT INTO artifacts
+           (project_id, module, type, content, file_path, version)
+           VALUES (?, ?, ?, ?, ?, ?)""",
+        (project_id, module, artifact_type, content, file_path, version)
+    )
+    artifact_id = c.lastrowid
     conn.commit()
     conn.close()
-    return aid
+    return artifact_id
 
+def get_next_version(project_id: int, module: str) -> int:
+    """
+    Get the next integer version for a module's artifact.
+    First generation → 1, second → 2, etc.
+    """
+    conn = get_connection()
+    c = conn.cursor()
+    c.execute(
+        "SELECT COUNT(*) FROM artifacts WHERE project_id=? AND module=?",
+        (project_id, module)
+    )
+    count = c.fetchone()[0]
+    conn.close()
+    return count + 1
 
 def get_artifacts(project_id):
     conn = get_connection()
@@ -214,3 +237,43 @@ def update_tc_status(tc_id, status, model_response=""):
 
 
 init_db()
+
+def migrate_db():
+    """Run any needed DB migrations."""
+    conn = get_connection()
+    c = conn.cursor()
+
+    # Check if version column is already TEXT
+    c.execute("PRAGMA table_info(artifacts)")
+    cols = {row[1]: row[2] for row in c.fetchall()}
+
+    if cols.get('version') == 'INTEGER':
+        # SQLite can't ALTER COLUMN type directly — recreate table
+        c.executescript("""
+            BEGIN;
+            ALTER TABLE artifacts RENAME TO artifacts_old;
+            CREATE TABLE artifacts (
+                id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                project_id  INTEGER NOT NULL,
+                module      TEXT    NOT NULL,
+                type        TEXT    NOT NULL,
+                content     TEXT,
+                file_path   TEXT,
+                version     TEXT    DEFAULT '1.0',
+                created_at  TEXT    DEFAULT (datetime('now')),
+                FOREIGN KEY (project_id) REFERENCES projects(id)
+            );
+            INSERT INTO artifacts
+                (id, project_id, module, type, content, file_path, version, created_at)
+            SELECT
+                id, project_id, module, type, content,
+                COALESCE(file_path,''),
+                CAST(version AS TEXT) || '.0',
+                created_at
+            FROM artifacts_old;
+            DROP TABLE artifacts_old;
+            COMMIT;
+        """)
+        print("✅ DB migrated: artifacts.version INTEGER → TEXT")
+
+    conn.close()
