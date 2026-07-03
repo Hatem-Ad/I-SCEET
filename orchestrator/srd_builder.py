@@ -1,11 +1,13 @@
 """
 ================================================================================
- I-SCEET — DOCX Builder v2.1
- File: orchestrator/docx_builder.py
+ I-SCEET — SRD Builder v2.1
+ File: orchestrator/srd_builder.py
 ================================================================================
- Parses M1/M2 LLM text output -> generates professional Word .docx
- M1 output -> SRD-0xx.docx  (Sections I, II, III.1, III.2, IV)
- M2 output -> SDDD-0xx.docx (Section 1: Architecture, Section 2: LLRs)
+ Parses M1 LLM text output -> generates professional SRD-0xx.docx
+ (Sections I, II, III.1, III.2, IV)
+
+ SDDD (M2) generation moved to its own module: orchestrator/sddd_builder.py
+ (different field structure — LLR is not an HLR, do not merge these back).
 
  Updated for M1_system_prompt v3.1 enriched HLR format:
    ID, Title, Activation Period, Statement, Input Data, Output Data,
@@ -549,31 +551,7 @@ def _parse_m1_output(text: str) -> dict:
     return result
 
 
-def _parse_m2_output(text: str) -> dict:
-    text = _strip_think_tags(text)
-    result = {'sec1': '', 'sec2': '', 'llrs': []}
-    sec_pattern = re.compile(r'SECTION\s+([12])[:\s—-]+(.+?)(?=SECTION\s+[12][:\s—-]|\Z)',
-                              re.DOTALL | re.IGNORECASE)
-    for m in sec_pattern.finditer(text):
-        num, content = m.group(1), m.group(2).strip()
-        if num == '1':
-            result['sec1'] = content
-        elif num == '2':
-            result['sec2'] = content
-            id_positions = [mm.start() for mm in re.finditer(r'(?m)^\s*ID:\s*LLR-', content)]
-            for idx, pos in enumerate(id_positions):
-                end = id_positions[idx + 1] if idx + 1 < len(id_positions) else len(content)
-                block = content[pos:end]
-                id_match = re.match(r'\s*ID:\s*(LLR-[A-Z]+-\d+[A-Za-z-]*)', block)
-                if not id_match:
-                    continue
-                llr = {'ID': id_match.group(1)}
-                llr.update(_parse_req_block(block))
-                result['llrs'].append(llr)
-    return result
-
-
-# ── HLR / LLR RENDERING ────────────────────────────────────────────────────────
+# ── HLR RENDERING ──────────────────────────────────────────────────────────────
 def _add_req_card(doc, req: dict, prefix: str = ""):
     """
     Render one HLR/LLR matching the reference industrial SRD style exactly:
@@ -775,55 +753,6 @@ def build_srd(m1_output: str, output_path: str, version: str = "1.0",
     else:
         _add_body(doc, "[No HLRs could be parsed from model output — raw text below]")
         for line in (parsed['sec4'] or m1_output).split('\n')[:150]:
-            _add_body(doc, line.strip())
-
-    os.makedirs(os.path.dirname(output_path) or '.', exist_ok=True)
-    doc.save(output_path)
-    return output_path
-
-
-def build_sddd(m2_output: str, output_path: str, version: str = "1.0",
-               project: str = "I-SCEET") -> str:
-    """Build SDDD-0xx.docx from M2 text output."""
-    date_str = datetime.now().strftime("%Y-%m-%d")
-    doc_id   = "SDDD-0xx"
-
-    doc = Document()
-    section = doc.sections[0]
-    section.page_width  = Cm(21)
-    section.page_height = Cm(29.7)
-    section.left_margin   = Cm(2.5)
-    section.right_margin  = Cm(2.5)
-    section.top_margin    = Cm(2.5)
-    section.bottom_margin = Cm(2)
-
-    _make_cover(doc, doc_id, "SOFTWARE DESIGN DESCRIPTION DOCUMENT",
-                version, project, "M2 (I-SCEET — Mistral Small 24B)", date_str, "A")
-    _add_header_footer(doc, doc_id, version, date_str)
-    _make_revision_table(doc, version, date_str, generator="M2 (I-SCEET AI)")
-    doc.add_page_break()
-
-    parsed = _parse_m2_output(m2_output)
-
-    _add_heading(doc, "SECTION 1 — SOFTWARE ARCHITECTURE", 1)
-    if parsed['sec1']:
-        _render_multiline_field(doc, parsed['sec1'])
-    doc.add_page_break()
-
-    _add_heading(doc, "SECTION 2 — LOW LEVEL REQUIREMENTS", 1)
-    if parsed['llrs']:
-        by_subsystem = {}
-        for llr in parsed['llrs']:
-            sub = re.search(r'LLR-([A-Z]+)-', llr.get('ID', ''))
-            key = sub.group(1) if sub else 'OTHER'
-            by_subsystem.setdefault(key, []).append(llr)
-        for subsystem_idx, (subsystem, llrs) in enumerate(by_subsystem.items(), 1):
-            _add_heading(doc, f"2.{subsystem_idx} — {subsystem} Low Level Requirements", 2)
-            for req_idx, llr in enumerate(llrs, 1):
-                _add_req_card(doc, llr, prefix=f"2.{subsystem_idx}.{req_idx}")
-        _add_body(doc, f"Total LLRs generated: {len(parsed['llrs'])}")
-    else:
-        for line in (parsed['sec2'] or '').split('\n')[:200]:
             _add_body(doc, line.strip())
 
     os.makedirs(os.path.dirname(output_path) or '.', exist_ok=True)
