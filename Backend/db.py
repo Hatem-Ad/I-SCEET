@@ -3,6 +3,24 @@ import os
 
 DB_PATH = os.path.join(os.path.dirname(__file__), "..", "isceet.db")
 
+# ── DOCUMENT NAMING CONVENTIONS ────────────────────────────────────────────────
+# Every artifact is identified by (family name, baseline_number, minor_number,
+# status). The formatted Document ID / Version string is always COMPUTED from
+# these, never stored pre-formatted - this is what the whole "grand ménage"
+# session was about: stop having the displayed ID and the Version field able
+# to drift out of sync.
+#
+#   PLANNING_FAMILIES : bare name never changes (e.g. "PSAC"); Version field
+#       is always "{baseline}.{minor}"; Status (DRAFT/BASELINE) is the only
+#       thing that differs between a draft and a baselined revision.
+#   Everything else (standards, and AI-pipeline outputs SRD/SDDD/DD/CT/SUTC/
+#       SVTC/TM) : Document ID embeds the baseline number - "{name}-{baseline}"
+#       once baselined (no dot), or "{name}-{baseline}.{minor}" while draft.
+
+PLANNING_FAMILIES = {"PSAC", "SDP", "SVP", "SCMP", "SQAP"}
+# Everything else (SRS, SDS, SCS, SVS, SRD, SDDD, DD, CT, SUTC, SVTC, TM, ...)
+# uses the "standards" convention by default.
+
 
 def get_connection():
     conn = sqlite3.connect(DB_PATH)
@@ -28,7 +46,13 @@ def init_db():
         type TEXT NOT NULL,
         content TEXT,
         file_path TEXT,
-        version INTEGER DEFAULT 1,
+        version TEXT DEFAULT '1.0',
+        baseline_number INTEGER DEFAULT 1,
+        minor_number INTEGER DEFAULT 0,
+        status TEXT DEFAULT 'DRAFT',
+        change_description TEXT,
+        baselined_at TEXT,
+        baselined_by TEXT,
         created_at TEXT DEFAULT (datetime('now')),
         FOREIGN KEY (project_id) REFERENCES projects(id)
     )""")
@@ -65,6 +89,77 @@ def init_db():
         FOREIGN KEY (project_id) REFERENCES projects(id)
     )""")
     conn.commit()
+    conn.close()
+
+
+def migrate_db():
+    """Run any needed DB migrations. Safe to call every startup - each
+    step checks before acting."""
+    conn = get_connection()
+    c = conn.cursor()
+
+    c.execute("PRAGMA table_info(artifacts)")
+    cols = {row[1]: row[2] for row in c.fetchall()}
+
+    if cols.get('version') == 'INTEGER':
+        c.executescript("""
+            BEGIN;
+            ALTER TABLE artifacts RENAME TO artifacts_old;
+            CREATE TABLE artifacts (
+                id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                project_id  INTEGER NOT NULL,
+                module      TEXT    NOT NULL,
+                type        TEXT    NOT NULL,
+                content     TEXT,
+                file_path   TEXT,
+                version     TEXT    DEFAULT '1.0',
+                created_at  TEXT    DEFAULT (datetime('now')),
+                FOREIGN KEY (project_id) REFERENCES projects(id)
+            );
+            INSERT INTO artifacts
+                (id, project_id, module, type, content, file_path, version, created_at)
+            SELECT
+                id, project_id, module, type, content,
+                COALESCE(file_path,''),
+                CAST(version AS TEXT) || '.0',
+                created_at
+            FROM artifacts_old;
+            DROP TABLE artifacts_old;
+            COMMIT;
+        """)
+        print("✅ DB migrated: artifacts.version INTEGER → TEXT")
+        c.execute("PRAGMA table_info(artifacts)")
+        cols = {row[1]: row[2] for row in c.fetchall()}
+
+    new_cols = {
+        "baseline_number":     "INTEGER DEFAULT 1",
+        "minor_number":        "INTEGER DEFAULT 0",
+        "status":              "TEXT DEFAULT 'DRAFT'",
+        "change_description":  "TEXT",
+        "baselined_at":        "TEXT",
+        "baselined_by":        "TEXT",
+    }
+    added = []
+    for col, decl in new_cols.items():
+        if col not in cols:
+            c.execute(f"ALTER TABLE artifacts ADD COLUMN {col} {decl}")
+            added.append(col)
+    if added:
+        # Best-effort backfill from the legacy 'version' text column
+        # (format "N.M") so existing rows aren't all reset to 1.0.
+        c.execute("SELECT id, version FROM artifacts WHERE version LIKE '%.%'")
+        for row in c.fetchall():
+            try:
+                major, minor = row["version"].split(".", 1)
+                c.execute(
+                    "UPDATE artifacts SET baseline_number=?, minor_number=? WHERE id=?",
+                    (int(major), int(minor), row["id"])
+                )
+            except (ValueError, AttributeError):
+                continue
+        conn.commit()
+        print(f"✅ DB migrated: artifacts columns added: {', '.join(added)}")
+
     conn.close()
 
 
@@ -114,39 +209,126 @@ def delete_project(project_id):
     conn.close()
 
 
-# ── ADD to save_artifact() — add version parameter ────────────────────────────
-# Replace the existing save_artifact function with this:
+# ── DOCUMENT ID / VERSION FORMATTING ────────────────────────────────────────
+def format_doc_id(family: str, baseline_number: int, minor_number: int, status: str) -> str:
+    """The single source of truth for how an artifact's Document ID is
+    displayed, so it can never drift from its Version/Status again.
+    Planning docs (PSAC, SDP, SVP, SCMP, SQAP): bare name always.
+    Everything else: "{family}-{baseline}" once BASELINE (no dot),
+    "{family}-{baseline}.{minor}" while DRAFT."""
+    if family in PLANNING_FAMILIES:
+        return family
+    if status == "BASELINE":
+        return f"{family}-{baseline_number}"
+    return f"{family}-{baseline_number}.{minor_number}"
+
+
+def format_version(baseline_number: int, minor_number: int) -> str:
+    """Version field is always "{baseline}.{minor}" regardless of family -
+    this is what changes in the cover-page Version cell."""
+    return f"{baseline_number}.{minor_number}"
+
+
+# ── ARTIFACT VERSIONING ─────────────────────────────────────────────────────
+def get_next_version(project_id: int, module: str, artifact_type: str = None) -> dict:
+    """Compute the (baseline_number, minor_number, status) for the NEXT
+    artifact to be generated for this project/module[/type].
+
+    Rule (confirmed): generation NEVER produces a BASELINE - only the
+    explicit baseline_artifact() action (the 🔒 button) does, and THAT is
+    the only place baseline_number increments. A regular new draft always
+    continues the CURRENT baseline number with minor+1, whether the last
+    row was itself a DRAFT or a BASELINE (e.g. PDS 2.0 BASELINE -> next
+    draft is 2.1, not 3.0 - the baseline number only moves again at the
+    next 🔒 click, e.g. SRS-1.6 DRAFT -> 🔒 -> SRS-2 BASELINE).
+      - no prior row -> baseline=1, minor=0, DRAFT
+      - prior row (DRAFT or BASELINE) -> same baseline, minor+1, DRAFT
+    """
+    conn = get_connection()
+    c = conn.cursor()
+    query = "SELECT * FROM artifacts WHERE project_id=? AND module=?"
+    params = [project_id, module]
+    if artifact_type:
+        query += " AND type=?"
+        params.append(artifact_type)
+    query += " ORDER BY baseline_number DESC, minor_number DESC, id DESC LIMIT 1"
+    c.execute(query, params)
+    row = c.fetchone()
+    conn.close()
+
+    if row is None:
+        return {"baseline_number": 1, "minor_number": 0, "status": "DRAFT"}
+    return {"baseline_number": row["baseline_number"], "minor_number": row["minor_number"] + 1, "status": "DRAFT"}
+
 
 def save_artifact(project_id: int, module: str, artifact_type: str,
-                  content: str, file_path: str = "", version: str = "1.0") -> int:
-    """Save artifact with version. Each call creates a new version row."""
+                  content: str, file_path: str = "",
+                  version: dict = None, change_description: str = "") -> int:
+    """Save a new artifact version. `version` is the dict returned by
+    get_next_version() - if not given, it's computed automatically so
+    callers never have to hand-track baseline/minor numbers themselves."""
+    if version is None:
+        version = get_next_version(project_id, module, artifact_type)
+
+    baseline_number = version["baseline_number"]
+    minor_number = version["minor_number"]
+    status = version.get("status", "DRAFT")
+    version_str = format_version(baseline_number, minor_number)
+
     conn = get_connection()
     c = conn.cursor()
     c.execute(
         """INSERT INTO artifacts
-           (project_id, module, type, content, file_path, version)
-           VALUES (?, ?, ?, ?, ?, ?)""",
-        (project_id, module, artifact_type, content, file_path, version)
+           (project_id, module, type, content, file_path, version,
+            baseline_number, minor_number, status, change_description)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+        (project_id, module, artifact_type, content, file_path, version_str,
+         baseline_number, minor_number, status, change_description)
     )
     artifact_id = c.lastrowid
     conn.commit()
     conn.close()
     return artifact_id
 
-def get_next_version(project_id: int, module: str) -> int:
-    """
-    Get the next integer version for a module's artifact.
-    First generation → 1, second → 2, etc.
-    """
+
+def baseline_artifact(artifact_id: int, change_description: str, baselined_by: str = "") -> int:
+    """The 🔒 Baseline button: freezes the CURRENT latest draft of one
+    artifact as the next baseline. This is the ONLY place baseline_number
+    increments (confirmed rule: SRS-1.6 DRAFT -> 🔒 -> SRS-2 BASELINE).
+    Creates a NEW row (never mutates the draft it's based on, keeping
+    full history) with baseline_number+1, minor reset to 0, status=BASELINE.
+    Returns the new artifact id."""
     conn = get_connection()
     c = conn.cursor()
+    c.execute("SELECT * FROM artifacts WHERE id=?", (artifact_id,))
+    src = c.fetchone()
+    if src is None:
+        conn.close()
+        raise ValueError(f"No artifact with id={artifact_id}")
+    if src["status"] == "BASELINE":
+        conn.close()
+        raise ValueError("This artifact is already a BASELINE - baseline the next draft instead.")
+
+    new_baseline_number = src["baseline_number"] + 1
+    new_version_str = format_version(new_baseline_number, 0)
+    from datetime import datetime
+    now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
     c.execute(
-        "SELECT COUNT(*) FROM artifacts WHERE project_id=? AND module=?",
-        (project_id, module)
+        """INSERT INTO artifacts
+           (project_id, module, type, content, file_path, version,
+            baseline_number, minor_number, status, change_description,
+            baselined_at, baselined_by)
+           VALUES (?, ?, ?, ?, ?, ?, ?, 0, 'BASELINE', ?, ?, ?)""",
+        (src["project_id"], src["module"], src["type"], src["content"],
+         src["file_path"], new_version_str, new_baseline_number,
+         change_description, now, baselined_by)
     )
-    count = c.fetchone()[0]
+    new_id = c.lastrowid
+    conn.commit()
     conn.close()
-    return count + 1
+    return new_id
+
 
 def get_artifacts(project_id):
     conn = get_connection()
@@ -157,14 +339,57 @@ def get_artifacts(project_id):
     return [dict(r) for r in rows]
 
 
-def get_artifact_by_module(project_id, module):
+def get_artifact_by_module(project_id, module, artifact_type: str = None):
+    """Latest version of an artifact. Sorts numerically on
+    (baseline_number, minor_number) - the old version fixed this bug
+    where TEXT sort put "10.0" before "2.0"."""
     conn = get_connection()
     c = conn.cursor()
-    c.execute("SELECT * FROM artifacts WHERE project_id=? AND module=? ORDER BY version DESC LIMIT 1",
-              (project_id, module))
+    query = "SELECT * FROM artifacts WHERE project_id=? AND module=?"
+    params = [project_id, module]
+    if artifact_type:
+        query += " AND type=?"
+        params.append(artifact_type)
+    query += " ORDER BY baseline_number DESC, minor_number DESC, id DESC LIMIT 1"
+    c.execute(query, params)
     row = c.fetchone()
     conn.close()
     return dict(row) if row else None
+
+
+def get_artifact_history(project_id, module, artifact_type: str = None):
+    """All versions of an artifact, oldest first - for the diff view
+    before confirming a baseline."""
+    conn = get_connection()
+    c = conn.cursor()
+    query = "SELECT * FROM artifacts WHERE project_id=? AND module=?"
+    params = [project_id, module]
+    if artifact_type:
+        query += " AND type=?"
+        params.append(artifact_type)
+    query += " ORDER BY baseline_number ASC, minor_number ASC, id ASC"
+    c.execute(query, params)
+    rows = c.fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+
+def get_all_baselines(project_id=None):
+    """Every BASELINE row, across one project or the whole database -
+    feeds the SCMP SCI Register automatically instead of it being
+    hand-typed."""
+    conn = get_connection()
+    c = conn.cursor()
+    if project_id is not None:
+        c.execute(
+            "SELECT * FROM artifacts WHERE project_id=? AND status='BASELINE' "
+            "ORDER BY baselined_at ASC", (project_id,)
+        )
+    else:
+        c.execute("SELECT * FROM artifacts WHERE status='BASELINE' ORDER BY baselined_at ASC")
+    rows = c.fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
 
 
 def save_review(project_id, module, artifact_type, status, notes, reviewer=""):
@@ -237,43 +462,4 @@ def update_tc_status(tc_id, status, model_response=""):
 
 
 init_db()
-
-def migrate_db():
-    """Run any needed DB migrations."""
-    conn = get_connection()
-    c = conn.cursor()
-
-    # Check if version column is already TEXT
-    c.execute("PRAGMA table_info(artifacts)")
-    cols = {row[1]: row[2] for row in c.fetchall()}
-
-    if cols.get('version') == 'INTEGER':
-        # SQLite can't ALTER COLUMN type directly — recreate table
-        c.executescript("""
-            BEGIN;
-            ALTER TABLE artifacts RENAME TO artifacts_old;
-            CREATE TABLE artifacts (
-                id          INTEGER PRIMARY KEY AUTOINCREMENT,
-                project_id  INTEGER NOT NULL,
-                module      TEXT    NOT NULL,
-                type        TEXT    NOT NULL,
-                content     TEXT,
-                file_path   TEXT,
-                version     TEXT    DEFAULT '1.0',
-                created_at  TEXT    DEFAULT (datetime('now')),
-                FOREIGN KEY (project_id) REFERENCES projects(id)
-            );
-            INSERT INTO artifacts
-                (id, project_id, module, type, content, file_path, version, created_at)
-            SELECT
-                id, project_id, module, type, content,
-                COALESCE(file_path,''),
-                CAST(version AS TEXT) || '.0',
-                created_at
-            FROM artifacts_old;
-            DROP TABLE artifacts_old;
-            COMMIT;
-        """)
-        print("✅ DB migrated: artifacts.version INTEGER → TEXT")
-
-    conn.close()
+migrate_db()

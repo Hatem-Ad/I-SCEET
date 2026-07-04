@@ -49,29 +49,29 @@ OUTPUT_BASE = Path(__file__).parent.parent / "outputs"
 
 # ── DOC FILTERING (Option B) ──────────────────────────────────────────────────
 MODULE_DOC_FILTER = {
-    "M1": ["PSAC", "SDP", "SRS-0xx", "PDS", "ARCH", "HW"],
-    "M2": ["SDP", "SRS-0xx", "SDS-0xx"],
-    "M3": ["SDP", "SCS-0xx", "SDS-0xx"],
-    "M4": ["SVP", "SRS-0xx"],
-    "M5": ["SVP", "SRS-0xx"],
+    "M1": ["PSAC", "SDP", "SRS", "PDS", "ARCH", "HW"],
+    "M2": ["SDP", "SRS", "SDS"],
+    "M3": ["SDP", "SCS", "SDS"],
+    "M4": ["SVP", "SRS", "SVS"],
+    "M5": ["SVP", "SRS", "SVS"],
     "M6": ["SCMP", "SQAP"],
 }
 
 MODULE_OUTPUT_TYPE = {
-    "M1": "SRD-0xx",
-    "M2": "SDDD-0xx",
+    "M1": "SRD",
+    "M2": "SDDD",
     "M3": "/src",
-    "M4": "SUTC-0xx",
-    "M5": "SVTC-0xx",
-    "M6": "TM-0xx",
+    "M4": "SUTC",
+    "M5": "SVTC",
+    "M6": "TM",
 }
 
 MODULE_PREV_OUTPUTS = {
-    "M2": ["SRD-0xx"],
-    "M3": ["SDDD-0xx"],
-    "M4": ["SDDD-0xx"],
-    "M5": ["SRD-0xx"],
-    "M6": ["SRD-0xx", "SDDD-0xx", "/src", "SUTC-0xx", "SVTC-0xx"],
+    "M2": ["SRD"],
+    "M3": ["SDDD"],
+    "M4": ["SDDD"],
+    "M5": ["SRD"],
+    "M6": ["SRD", "SDDD", "/src", "SUTC", "SVTC"],
 }
 
 MODULE_FORMAT = {
@@ -107,6 +107,30 @@ class PCPipeline:
             return r.json()
         except Exception as e:
             return {"status": "offline", "error": str(e)}
+
+    def chat(self, module: str, question: str, artifacts: dict) -> dict:
+        """Call the consultative /chat endpoint (Colab notebook Cell 11 —
+        uses M6/Phi-4, independent from the generator modules, per its own
+        docstring). This endpoint is SYNCHRONOUS on the Colab side (not
+        the async job pattern /generate_async uses) — a long timeout is
+        used here to absorb Phi-4's load time, but this is still a real
+        ngrok-timeout risk on the free tier if the model isn't already
+        cached. Flagged, not fixed here — ask if you want it converted to
+        the async job pattern too."""
+        try:
+            r = requests.post(
+                f"{self.colab_url}/chat",
+                json={"module": module, "question": question, "artifacts": artifacts},
+                timeout=180,
+            )
+            r.raise_for_status()
+            return r.json()
+        except requests.exceptions.Timeout:
+            return {"status": "error", "answer":
+                    "Request timed out — Phi-4 may still be loading. "
+                    "This can happen on ngrok's free tier for slow cold starts."}
+        except Exception as e:
+            return {"status": "error", "answer": f"Chat request failed: {e}"}
 
     def _poll_progress(self) -> dict:
         """Single lightweight poll of Colab's live status. Never raises."""
@@ -146,16 +170,25 @@ class PCPipeline:
         )
 
     # ── VERSION MANAGEMENT ────────────────────────────────────────────────────
-    def _get_next_version(self, module: str) -> str:
+    def _get_next_version(self, module: str) -> dict:
+        """Returns the {baseline_number, minor_number, status} dict for
+        this run, computed against the module's PRIMARY output type
+        (MODULE_OUTPUT_TYPE[module]) so that when a module produces
+        several artifacts in one run (M2 -> SDDD+DD+CT), they all share
+        the same version number - computed once here, reused for all of
+        them in run_module(), rather than each type incrementing
+        independently and drifting apart."""
         try:
-            version = get_next_version(self.project_id, module)
-            return f"{version}.0"
+            return get_next_version(self.project_id, module, MODULE_OUTPUT_TYPE[module])
         except Exception:
-            return "1.0"
+            return {"baseline_number": 1, "minor_number": 0, "status": "DRAFT"}
 
     # ── FILE BUILDER ──────────────────────────────────────────────────────────
-    def _build_output_file(self, module: str, text_output: str, version: str):
+    def _build_output_file(self, module: str, text_output: str, version: dict):
         """Convert text output to .docx/.xlsx file(s).
+        `version` is the {baseline_number, minor_number, status} dict from
+        _get_next_version() — never a bare string, so filenames and DB
+        rows can never drift apart.
         Returns (primary_path, extra_artifacts) where extra_artifacts is a
         dict {doc_type: path} for modules that produce more than one file
         (currently only M2: SDDD.docx + DD.xlsx + CT.xlsx). Empty dict for
@@ -163,43 +196,44 @@ class PCPipeline:
         if not BUILDERS_AVAILABLE:
             return None, {}
 
-        out_dir = OUTPUT_BASE / self.project_name / f"v{version}"
+        version_str = f"{version['baseline_number']}.{version['minor_number']}"
+        out_dir = OUTPUT_BASE / self.project_name / f"v{version_str}"
         out_dir.mkdir(parents=True, exist_ok=True)
         extra_artifacts = {}
 
         try:
             if module == "M1":
-                path = str(out_dir / f"SRD-0xx_v{version}.docx")
-                build_srd(text_output, path, version, self.project_name)
+                path = str(out_dir / f"SRD_v{version_str}.docx")
+                build_srd(text_output, path, version_str, self.project_name)
                 return path, extra_artifacts
             elif module == "M2":
-                path = str(out_dir / f"SDDD-0xx_v{version}.docx")
-                build_sddd(text_output, path, version, self.project_name)
+                path = str(out_dir / f"SDDD_v{version_str}.docx")
+                build_sddd(text_output, path, version_str, self.project_name)
                 if DD_CT_BUILDERS_AVAILABLE:
                     try:
-                        dd_path = str(out_dir / f"DD-0xx_v{version}.xlsx")
-                        build_dd(text_output, dd_path, version)
-                        extra_artifacts["DD-0xx"] = dd_path
+                        dd_path = str(out_dir / f"DD_v{version_str}.xlsx")
+                        build_dd(text_output, dd_path, version_str)
+                        extra_artifacts["DD"] = dd_path
                     except Exception as e:
                         print(f"  ⚠️ DD builder error: {e}")
                     try:
-                        ct_path = str(out_dir / f"CT-0xx_v{version}.xlsx")
-                        build_ct(text_output, ct_path, version)
-                        extra_artifacts["CT-0xx"] = ct_path
+                        ct_path = str(out_dir / f"CT_v{version_str}.xlsx")
+                        build_ct(text_output, ct_path, version_str)
+                        extra_artifacts["CT"] = ct_path
                     except Exception as e:
                         print(f"  ⚠️ CT builder error: {e}")
                 return path, extra_artifacts
             elif module == "M4":
-                path = str(out_dir / f"SUTC-0xx_v{version}.xlsx")
-                build_sutc(text_output, path, version)
+                path = str(out_dir / f"SUTC_v{version_str}.xlsx")
+                build_sutc(text_output, path, version_str)
                 return path, extra_artifacts
             elif module == "M5":
-                path = str(out_dir / f"SVTC-0xx_v{version}.xlsx")
-                build_svtc(text_output, path, version)
+                path = str(out_dir / f"SVTC_v{version_str}.xlsx")
+                build_svtc(text_output, path, version_str)
                 return path, extra_artifacts
             elif module == "M6":
-                path = str(out_dir / f"TM-0xx_v{version}.xlsx")
-                build_tm(text_output, path, version)
+                path = str(out_dir / f"TM_v{version_str}.xlsx")
+                build_tm(text_output, path, version_str)
                 return path, extra_artifacts
             elif module == "M3":
                 path = str(out_dir / "src.txt")
@@ -298,6 +332,7 @@ class PCPipeline:
         if result.get("status") == "success":
             text_output = result["output"]
             version     = self._get_next_version(module)
+            version_str = f"{version['baseline_number']}.{version['minor_number']}"
 
             report(f"📝 Formatting {MODULE_OUTPUT_TYPE[module]} document...")
             file_path, extra_artifacts = self._build_output_file(module, text_output, version)
@@ -311,16 +346,19 @@ class PCPipeline:
                 version=version
             )
             for doc_type, extra_path in extra_artifacts.items():
+                # Same version dict reused on purpose - SDDD/DD/CT from the
+                # same M2 run stay numbered together (see _get_next_version
+                # docstring), rather than each type drifting independently.
                 save_artifact(
                     self.project_id, module, doc_type, "", extra_path, version=version
                 )
 
-            result["version"]     = version
+            result["version"]     = version_str
             result["file_path"]   = file_path
             result["extra_files"] = extra_artifacts
             result["file_format"] = MODULE_FORMAT.get(module, "txt")
 
-            report(f"✅ {module} complete — saved as v{version}")
+            report(f"✅ {module} complete — saved as v{version_str}")
 
         return result
 

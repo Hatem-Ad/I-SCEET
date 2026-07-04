@@ -10,7 +10,8 @@ import sys, os
 
 sys.path.append(os.path.join(os.path.dirname(__file__), "..", ".."))
 from Backend.db import (get_all_projects, get_artifacts,
-                         get_reviews, get_tc_remarks, delete_project)
+                         get_reviews, get_tc_remarks, delete_project,
+                         get_all_baselines)
 
 st.set_page_config(page_title="Historique — I-SCEET", page_icon="📁", layout="wide")
 st.title("📁 Historique des projets")
@@ -56,6 +57,27 @@ for p in projects:
             st.markdown("**Revues :**")
             approved = sum(1 for r in reviews if r["status"] == "approved")
             st.caption(f"✅ {approved} approuvés / {len(reviews)} total")
+
+        # ── SCI REGISTER (feeds SCMP §8) ─────────────────────────────────────
+        baselines = get_all_baselines(p["id"])
+        if baselines:
+            st.markdown("**📋 SCI Register — baselines (feeds SCMP §8):**")
+            sci_rows = [{
+                "Document ID": f"{b['type']}-{b['baseline_number']}" if b['type'] not in
+                    ("PSAC", "SDP", "SVP", "SCMP", "SQAP") else b['type'],
+                "Version": b["version"],
+                "Baselined": (b.get("baselined_at") or "")[:16],
+                "By": b.get("baselined_by") or "—",
+                "Description": b.get("change_description") or "—",
+            } for b in baselines]
+            st.dataframe(sci_rows, use_container_width=True, hide_index=True)
+            import pandas as pd
+            csv = pd.DataFrame(sci_rows).to_csv(index=False).encode("utf-8")
+            st.download_button(
+                "⬇️ Export SCI Register (CSV — paste into SCMP §8)",
+                data=csv, file_name=f"SCI_Register_{p['name']}.csv",
+                mime="text/csv", key=f"sci_{p['id']}"
+            )
 
         st.divider()
         col1, col2, col3 = st.columns(3)

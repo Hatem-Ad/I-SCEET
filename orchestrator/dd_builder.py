@@ -21,7 +21,10 @@ try:
 except ImportError:
     raise ImportError("openpyxl required: pip install openpyxl")
 
-from sddd_builder import _extract_dd_tags
+try:
+    from orchestrator.sddd_builder import _extract_dd_tags
+except ImportError:
+    from sddd_builder import _extract_dd_tags  # fallback: run standalone from orchestrator/
 
 HEADER_BG = "1F3864"
 HEADER_FONT = Font(bold=True, color="FFFFFF", name="Arial", size=10)

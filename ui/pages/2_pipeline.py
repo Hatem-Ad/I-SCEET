@@ -3,6 +3,12 @@
  I-SCEET — Page 2 : Pipeline M1→M6
  File: ui/pages/2_pipeline.py
 ================================================================================
+ v2: fixed stale artifact names (SVCP-LLT/HLT-001 -> SUTC/SVTC, STD-001 ->
+ TM), M2 now shown with its 3 outputs (SDDD/DD/CT), and progress_callback
+ is actually wired to pc_pipeline.py's live /progress polling instead of
+ a static spinner - both AUTO and MANUAL mode show real stage messages
+ (loading model / generating / unloading) as they happen.
+================================================================================
 """
 
 import streamlit as st
@@ -25,18 +31,17 @@ st.markdown(f"**Project:** {active['name']} — DAL {active['dal_level']}")
 st.divider()
 
 MODULES = [
-    {"id": "M1", "name": "HLR Generator",          "model": "Qwen3 32B",          "output": "SRD-001"},
-    {"id": "M2", "name": "LLR Generator",           "model": "Mistral Small 24B",  "output": "SDDD-001"},
-    {"id": "M3", "name": "Code Generator",          "model": "Qwen2.5-Coder 32B", "output": "/src"},
-    {"id": "M4", "name": "LLT Generator ★ indep.", "model": "Gemma3 27B",         "output": "SVCP-LLT-001"},
-    {"id": "M5", "name": "HLT Generator ★ indep.", "model": "DeepSeek-R1 32B",    "output": "SVCP-HLT-001"},
-    {"id": "M6", "name": "Traceability Generator",  "model": "Phi-4 14B",          "output": "STD-001"},
+    {"id": "M1", "name": "HLR Generator",           "model": "Qwen3 32B",         "outputs": ["SRD"]},
+    {"id": "M2", "name": "LLR Generator",            "model": "Mistral Small 24B", "outputs": ["SDDD", "DD", "CT"]},
+    {"id": "M3", "name": "Code Generator",           "model": "Qwen2.5-Coder 32B", "outputs": ["/src"]},
+    {"id": "M4", "name": "LLT Generator ★ indep.",   "model": "Gemma3 27B",        "outputs": ["SUTC"]},
+    {"id": "M5", "name": "HLT Generator ★ indep.",   "model": "DeepSeek-R1 32B",   "outputs": ["SVTC"]},
+    {"id": "M6", "name": "Traceability Generator",   "model": "Phi-4 14B",         "outputs": ["TM"]},
 ]
 
 # ── COLAB CONNECTION ──────────────────────────────────────────────────────────
 st.markdown("### 🔌 Colab Connection")
 
-import os
 from dotenv import load_dotenv
 load_dotenv()
 default_url = os.getenv("COLAB_URL", "")
@@ -44,7 +49,7 @@ default_url = os.getenv("COLAB_URL", "")
 colab_url = st.text_input(
     "Colab URL (ngrok)",
     placeholder="https://xxxx.ngrok-free.app",
-    value=st.session_state.get("colab_url", default_url)  # ← changed
+    value=st.session_state.get("colab_url", default_url)
 )
 if colab_url:
     st.session_state["colab_url"] = colab_url
@@ -74,17 +79,16 @@ st.divider()
 
 # ── PIPELINE STATUS ───────────────────────────────────────────────────────────
 st.markdown("### 📊 Pipeline Status")
-artifacts    = get_artifacts(active["id"])
-done_modules = {a["module"]: a for a in artifacts
-                if a["module"] in [m["id"] for m in MODULES]}
+artifacts = get_artifacts(active["id"])
 
 cols = st.columns(6)
 for i, m in enumerate(MODULES):
-    done = m["id"] in done_modules
+    module_artifacts = {a["type"] for a in artifacts if a["module"] == m["id"]}
     with cols[i]:
-        st.markdown("✅" if done else "⬜")
         st.markdown(f"**{m['id']}**")
-        st.caption(m["output"])
+        for out in m["outputs"]:
+            done = out in module_artifacts
+            st.markdown(f"{'✅' if done else '⬜'} {out}")
 
 st.divider()
 
@@ -98,37 +102,40 @@ if "AUTO" in mode:
             st.error("Enter Colab URL first.")
             st.stop()
 
-        pipeline     = PCPipeline(colab_url, active["id"])
+        pipeline = PCPipeline(colab_url, active["id"])
         progress_bar = st.progress(0)
-        status_text  = st.empty()
+        module_label = st.empty()
+        live_status  = st.empty()
         all_results  = {}
 
         for i, m in enumerate(MODULES):
             mid = m["id"]
-            status_text.markdown(
-                f"⏳ Running **{mid}** — {m['name']} ({m['model']})..."
-            )
-            result = pipeline.run_single(mid)
+            module_label.markdown(f"**Running {mid} — {m['name']} ({m['model']})**")
+            live_status.markdown("⏳ Starting...")
+
+            def make_callback(placeholder):
+                def cb(module, message):
+                    placeholder.markdown(message)
+                return cb
+
+            result = pipeline.run_single(mid, progress_callback=make_callback(live_status))
             all_results[mid] = result
             progress_bar.progress((i + 1) / len(MODULES))
 
             if result.get("status") == "error":
-                status_text.error(
-                    f"❌ {mid} failed: {result.get('message')}"
-                )
+                live_status.error(f"❌ {mid} failed: {result.get('message')}")
                 break
             else:
-                elapsed = result.get("elapsed", "?")
-                status_text.markdown(
-                    f"✅ **{mid}** done in {elapsed}s → {m['output']} saved to DB"
+                live_status.success(
+                    f"✅ **{mid}** done — {', '.join(m['outputs'])} saved to DB "
+                    f"(v{result.get('version', '?')})"
                 )
                 time.sleep(0.3)
 
-        success = sum(1 for r in all_results.values()
-                      if r.get("status") == "success")
+        success = sum(1 for r in all_results.values() if r.get("status") == "success")
         if success == len(MODULES):
             st.success("🎉 Pipeline complete! All 6 modules generated.")
-            st.info("Go to **3 Revue** to review all outputs.")
+            st.page_link("pages/3_revue.py", label="Go to Revue", icon="🔍")
             update_project_status(active["id"], "complete")
         else:
             st.warning(f"⚠️ {success}/6 modules succeeded.")
@@ -142,22 +149,29 @@ else:
             st.error("Enter Colab URL first.")
             st.stop()
 
-        mid      = module_choice.split(" — ")[0]
+        mid = module_choice.split(" — ")[0]
         pipeline = PCPipeline(colab_url, active["id"])
 
-        with st.spinner(f"Running {mid}... (may take several minutes)"):
-            result = pipeline.run_single(mid)
+        live_status = st.empty()
+        live_status.markdown("⏳ Starting...")
+
+        def cb(module, message):
+            live_status.markdown(message)
+
+        result = pipeline.run_single(mid, progress_callback=cb)
 
         if result.get("status") == "success":
-            st.success(
-                f"✅ {mid} done in {result.get('elapsed', '?')}s — "
-                f"saved to DB"
+            live_status.success(
+                f"✅ {mid} done — saved to DB (v{result.get('version', '?')})"
             )
             st.text_area(
                 "Output preview (first 1000 chars)",
                 result.get("output", "")[:1000],
                 height=200
             )
-            st.info("Go to **3 Revue** to see the full output.")
+            extra = result.get("extra_files") or {}
+            if extra:
+                st.caption(f"Additional artifacts: {', '.join(extra.keys())}")
+            st.page_link("pages/3_revue.py", label="Go to Revue", icon="🔍")
         else:
-            st.error(f"❌ Error: {result.get('message', 'Unknown')}")
+            live_status.error(f"❌ Error: {result.get('message', 'Unknown')}")

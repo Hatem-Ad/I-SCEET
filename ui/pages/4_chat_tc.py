@@ -3,6 +3,12 @@
  I-SCEET — Page 4 : Chat consultatif / TC
  File: ui/pages/4_chat_tc.py
 ================================================================================
+ v2: was calling nothing — the answer was always the literal string
+ "[Appel API Colab à implémenter]", a TODO that was never done. The
+ Colab notebook (01_colab_server.ipynb, Cell 11) already has a working
+ POST /chat endpoint (M6/Phi-4, independent, consultative) — this page
+ now actually calls it via PCPipeline.chat().
+================================================================================
 """
 
 import streamlit as st
@@ -10,10 +16,11 @@ import sys, os
 
 sys.path.append(os.path.join(os.path.dirname(__file__), "..", ".."))
 from Backend.db import get_artifacts, save_chat, get_chat_history
+from orchestrator.pc_pipeline import PCPipeline
 
 st.set_page_config(page_title="Chat — I-SCEET", page_icon="💬", layout="wide")
 st.title("💬 Chat consultatif")
-st.caption("Posez des questions sur les artefacts générés. Consultatif uniquement — ne modifie pas les outputs.")
+st.caption("Posez des questions sur les artefacts générés. Consultatif uniquement — ne modifie pas les outputs. Modèle : M6 (Phi-4), indépendant des générateurs.")
 st.divider()
 
 active = st.session_state.get("active_project")
@@ -22,8 +29,17 @@ if not active:
     st.stop()
 
 artifacts = get_artifacts(active["id"])
-module_artifacts = {a["module"]: a for a in artifacts
-                    if a["module"] in ["M1","M2","M3","M4","M5","M6"]}
+
+# One artifact per module for chat context - prefer the one with the most
+# text content (DD/CT have empty content, only SDDD/SRD/etc. carry text;
+# picking by length avoids accidentally grabbing an empty-content row).
+module_artifacts = {}
+for a in artifacts:
+    if a["module"] not in ["M1", "M2", "M3", "M4", "M5", "M6"]:
+        continue
+    current = module_artifacts.get(a["module"])
+    if current is None or len(a.get("content") or "") > len(current.get("content") or ""):
+        module_artifacts[a["module"]] = a
 
 if not module_artifacts:
     st.info("⬜ Aucun artefact généré. Lancez d'abord le pipeline.")
@@ -43,7 +59,7 @@ with col2:
         st.caption("Le modèle lira tous les artefacts générés pour répondre.")
     else:
         artifact = module_artifacts.get(target)
-        st.caption(f"Artefact : {artifact['type']} — {len(artifact.get('content',''))} caractères")
+        st.caption(f"Artefact : {artifact['type']} — {len(artifact.get('content','')):,} caractères")
 
 st.divider()
 
@@ -67,13 +83,21 @@ if question:
             answer = (
                 f"**[Mode simulation — Colab non connecté]**\n\n"
                 f"Question reçue pour **{target}** : *{question}*\n\n"
-                f"Quand Colab sera connecté, le modèle analysera les artefacts "
-                f"et répondra précisément à votre question."
+                f"Connecte Colab sur **2 Pipeline** pour une vraie réponse."
             )
+            st.markdown(answer)
         else:
-            answer = "[Appel API Colab à implémenter]"
+            with st.spinner("🧠 M6 (Phi-4) analyse les artefacts... (peut prendre 1-2 min si le modèle doit charger)"):
+                pipeline = PCPipeline(colab_url, active["id"])
+                chat_artifacts = {m: a.get("content", "") for m, a in module_artifacts.items()}
+                result = pipeline.chat(target, question, chat_artifacts)
 
-        st.markdown(answer)
+            if result.get("status") == "success":
+                answer = result.get("answer", "(empty response)")
+            else:
+                answer = f"⚠️ {result.get('answer', 'Unknown error')}"
+            st.markdown(answer)
+
         save_chat(active["id"], target, question, answer)
 
 st.divider()
