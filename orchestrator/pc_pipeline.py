@@ -33,15 +33,17 @@ from Backend.db import (
 )
 
 try:
-    from orchestrator.xlsx_builder import build_sutc, build_svtc, build_tm
+    from orchestrator.sutc_builder import build_sutc
+    from orchestrator.svtc_builder import build_svtc
+    from orchestrator.tm_builder import build_tm
     XLSX_BUILDERS_AVAILABLE = True
 except ImportError:
     XLSX_BUILDERS_AVAILABLE = False
 
 # srd_builder/sddd_builder are imported unconditionally above (M1/M2 are
-# core to the pipeline); xlsx_builder (M4/M5/M6) is optional until it is
-# updated for the new formats — BUILDERS_AVAILABLE reflects docx builders
-# only, since those are always ready.
+# core to the pipeline); sutc/svtc/tm_builder (M4/M5/M6) match the new
+# 5-sheet A0/A1/A2/B0/B1 format — BUILDERS_AVAILABLE reflects docx
+# builders only, since those are always ready.
 BUILDERS_AVAILABLE = True
 
 # ── OUTPUT DIRECTORIES ────────────────────────────────────────────────────────
@@ -98,7 +100,9 @@ class PCPipeline:
         self.colab_url    = colab_url.rstrip("/")
         self.project_id   = project_id
         self.project_name = project_name
-        self.timeout      = 600
+        self.timeout      = 1800  # was 600s — too short once HW docs pushed
+                                  # context to ~14k tokens on a 32B model;
+                                  # 30 min covers worst case (M1/M3/M5 + large input)
         self.poll_interval = 1.5  # seconds between /progress polls
 
     def test_connection(self) -> dict:
@@ -121,7 +125,7 @@ class PCPipeline:
             r = requests.post(
                 f"{self.colab_url}/chat",
                 json={"module": module, "question": question, "artifacts": artifacts},
-                timeout=180,
+                timeout=600,  # was 180s - too short for a Phi-4 cold start on ngrok free tier
             )
             r.raise_for_status()
             return r.json()
@@ -153,9 +157,61 @@ class PCPipeline:
         for doc_type in MODULE_DOC_FILTER.get(module, []):
             if doc_type in all_artifacts and all_artifacts[doc_type]:
                 input_artifacts[doc_type] = all_artifacts[doc_type][:6000]
-        for output_type in MODULE_PREV_OUTPUTS.get(module, []):
-            if output_type in all_artifacts and all_artifacts[output_type]:
-                input_artifacts[output_type] = all_artifacts[output_type][:8000]
+
+        if module == "M6":
+            # M6 reads ALL prior artifacts at once - raw concatenation with
+            # per-artifact truncation risks cutting a tag ([COV.HLR-xxx],
+            # @req, ...) in half, silently breaking a traceability link.
+            # Deterministic tag extraction replaces the full text with a
+            # compact, complete correlation summary instead (see
+            # tag_extractor.py) - typically ~97% smaller, and nothing is
+            # ever truncated mid-tag since only whole tags are captured.
+            try:
+                from orchestrator.tag_extractor import build_m6_input
+                m6_summary = build_m6_input(
+                    srd_text=all_artifacts.get("SRD", ""),
+                    sddd_text=all_artifacts.get("SDDD", ""),
+                    src_text=all_artifacts.get("/src", ""),
+                    sutc_text=all_artifacts.get("SUTC", ""),
+                    svtc_text=all_artifacts.get("SVTC", ""),
+                )
+                input_artifacts["TAG_SUMMARY"] = m6_summary
+            except Exception as e:
+                print(f"  ⚠️ Tag extraction failed, falling back to truncated raw text: {e}")
+                for output_type in MODULE_PREV_OUTPUTS.get(module, []):
+                    if output_type in all_artifacts and all_artifacts[output_type]:
+                        input_artifacts[output_type] = all_artifacts[output_type][:8000]
+        elif module == "M2" and all_artifacts.get("SRD"):
+            # M2 needs full HLR substance (Statement, Category, Safety
+            # Effect) plus the Architecture section to derive meaningful
+            # LLRs - unlike M6, a pure ID-tag summary would lose exactly
+            # the content M2 needs. context_summarizer keeps that
+            # substance while dropping cover-page/reference-list bulk that
+            # M2 doesn't use, and - unlike a blind [:8000] cut - never
+            # truncates mid-HLR.
+            try:
+                from orchestrator.context_summarizer import summarize_srd_for_m2
+                input_artifacts["SRD"] = summarize_srd_for_m2(all_artifacts["SRD"])
+            except Exception as e:
+                print(f"  ⚠️ SRD summarization failed, falling back to truncated raw text: {e}")
+                input_artifacts["SRD"] = all_artifacts["SRD"][:8000]
+        elif module == "M3" and all_artifacts.get("SDDD"):
+            # M3 needs Prototype/Parameters/Called Functions/Causes-Effects
+            # /Implementation/DD tags to generate correct code, but not
+            # Design-Traceability/Mean-of-Verification/Rationale (M4/M5/M6's
+            # concern) or the document-level Intro/References/Summary.
+            # Reuses sddd_builder's own tested parser rather than new regex,
+            # ~40% smaller than raw text and never truncates mid-LLR.
+            try:
+                from orchestrator.context_summarizer import summarize_sddd_for_m3
+                input_artifacts["SDDD"] = summarize_sddd_for_m3(all_artifacts["SDDD"])
+            except Exception as e:
+                print(f"  ⚠️ SDDD summarization failed, falling back to truncated raw text: {e}")
+                input_artifacts["SDDD"] = all_artifacts["SDDD"][:8000]
+        else:
+            for output_type in MODULE_PREV_OUTPUTS.get(module, []):
+                if output_type in all_artifacts and all_artifacts[output_type]:
+                    input_artifacts[output_type] = all_artifacts[output_type][:8000]
         return input_artifacts
 
     def _get_tc_remarks(self, module: str) -> str:
@@ -245,13 +301,19 @@ class PCPipeline:
             return None, {}
 
     # ── RUN ONE MODULE (with live progress polling) ────────────────────────────
-    def run_module(self, module: str, progress_callback=None) -> dict:
+    def run_module(self, module: str, progress_callback=None, phase_scope: str = None) -> dict:
         """
         progress_callback(module: str, message: str) is called repeatedly
         with a human-readable live status string, e.g.:
           "📥 Loading Qwen3-32B-Q4_K_M.gguf..."
           "🧠 M1 is generating output... (this can take a few minutes)"
           "🗑️ Unloading M1..."
+
+        phase_scope (M1 only): a comma-separated list of PDS-ID prefixes
+        to cover in this run, e.g. "PDS-BOOT-*, PDS-CLK-*, PDS-FLASH-*" -
+        splits a large PDS across multiple generation passes when the
+        full set wouldn't fit comfortably in context. Leave None to cover
+        every PDS item in one pass (default).
 
         Uses the async job pattern (POST /generate_async + GET /result/<id>)
         instead of one long blocking POST — this avoids ngrok's free-tier
@@ -266,6 +328,9 @@ class PCPipeline:
         all_artifacts   = self._load_artifacts()
         input_artifacts = self._build_module_input(module, all_artifacts)
         tc_remarks      = self._get_tc_remarks(module)
+
+        if phase_scope and module == "M1":
+            input_artifacts["PHASE_SCOPE"] = f"PHASE SCOPE: {phase_scope}"
 
         if not input_artifacts:
             return {
@@ -374,5 +439,5 @@ class PCPipeline:
         update_project_status(self.project_id, "complete")
         return results
 
-    def run_single(self, module: str, progress_callback=None) -> dict:
-        return self.run_module(module, progress_callback)
+    def run_single(self, module: str, progress_callback=None, phase_scope: str = None) -> dict:
+        return self.run_module(module, progress_callback, phase_scope=phase_scope)

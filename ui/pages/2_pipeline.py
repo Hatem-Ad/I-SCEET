@@ -15,32 +15,35 @@ import streamlit as st
 import sys, os, time
 
 sys.path.append(os.path.join(os.path.dirname(__file__), "..", ".."))
+sys.path.append(os.path.join(os.path.dirname(__file__), ".."))
 from Backend.db import get_artifacts, update_project_status
 from orchestrator.pc_pipeline import PCPipeline
+from theme import inject_theme, page_header, module_rail, badge
 
-st.set_page_config(page_title="Pipeline — I-SCEET", page_icon="⚙️", layout="wide")
-st.title("⚙️ Pipeline M1 → M6")
-st.divider()
+st.set_page_config(page_title="Pipeline — I-SCEET", layout="wide")
+inject_theme()
+page_header("MODULE 02", "Pipeline M1 \u2192 M6")
 
 active = st.session_state.get("active_project")
 if not active:
-    st.warning("⚠️ No active project. Go to **1 Upload** first.")
+    st.warning("Aucun projet actif. Rendez-vous sur **1 Upload** d'abord.")
     st.stop()
 
-st.markdown(f"**Project:** {active['name']} — DAL {active['dal_level']}")
+st.markdown(f"**Projet :** {active['name']} \u2014 DAL {active['dal_level']}")
+st.page_link("pages/1_upload.py", label="Modifier les documents d'input de ce projet")
 st.divider()
 
 MODULES = [
     {"id": "M1", "name": "HLR Generator",           "model": "Qwen3 32B",         "outputs": ["SRD"]},
     {"id": "M2", "name": "LLR Generator",            "model": "Mistral Small 24B", "outputs": ["SDDD", "DD", "CT"]},
-    {"id": "M3", "name": "Code Generator",           "model": "Qwen2.5-Coder 32B", "outputs": ["/src"]},
+    {"id": "M3", "name": "Code Generator",           "model": "Qwen2.5-Coder 32B", "outputs": ["SRC"]},
     {"id": "M4", "name": "LLT Generator ★ indep.",   "model": "Gemma3 27B",        "outputs": ["SUTC"]},
     {"id": "M5", "name": "HLT Generator ★ indep.",   "model": "DeepSeek-R1 32B",   "outputs": ["SVTC"]},
     {"id": "M6", "name": "Traceability Generator",   "model": "Phi-4 14B",         "outputs": ["TM"]},
 ]
 
 # ── COLAB CONNECTION ──────────────────────────────────────────────────────────
-st.markdown("### 🔌 Colab Connection")
+st.markdown('<div class="isc-eyebrow">Connexion Colab</div>', unsafe_allow_html=True)
 
 from dotenv import load_dotenv
 load_dotenv()
@@ -48,7 +51,7 @@ default_url = os.getenv("COLAB_URL", "")
 
 colab_url = st.text_input(
     "Colab URL (ngrok)",
-    placeholder="https://xxxx.ngrok-free.app",
+    placeholder="https://your-domain.ngrok-free.app",
     value=st.session_state.get("colab_url", default_url)
 )
 if colab_url:
@@ -56,53 +59,59 @@ if colab_url:
 
 col1, col2 = st.columns([1, 3])
 with col1:
-    if st.button("🔗 Test Connection"):
+    if st.button("Tester la connexion"):
         if colab_url:
-            with st.spinner("Testing..."):
-                pipeline = PCPipeline(colab_url, active["id"])
+            with st.spinner("Test en cours..."):
+                pipeline = PCPipeline(colab_url, active["id"], active["name"])
                 status = pipeline.test_connection()
             if status.get("status") == "online":
-                st.success(f"✅ Online — GPU: {status.get('gpu_name', 'N/A')}")
+                st.markdown(badge(f"En ligne \u2014 GPU: {status.get('gpu_name', 'N/A')}", "success"), unsafe_allow_html=True)
                 st.session_state["colab_connected"] = True
             else:
-                st.error(f"❌ Offline — {status.get('error', 'Unknown')}")
+                st.markdown(badge(f"Hors ligne \u2014 {status.get('error', 'Inconnu')}", "danger"), unsafe_allow_html=True)
                 st.session_state["colab_connected"] = False
         else:
-            st.error("Enter ngrok URL first.")
+            st.error("Entrez d'abord l'URL ngrok.")
 with col2:
     if st.session_state.get("colab_connected"):
-        st.success("✅ Colab connected and ready")
+        st.markdown(badge("Colab connect\u00e9 et pr\u00eat", "success"), unsafe_allow_html=True)
     else:
-        st.warning("⚠️ Colab not connected — test connection first")
+        st.markdown(badge("Colab non connect\u00e9 \u2014 testez la connexion d'abord", "neutral"), unsafe_allow_html=True)
 
 st.divider()
 
 # ── PIPELINE STATUS ───────────────────────────────────────────────────────────
-st.markdown("### 📊 Pipeline Status")
+st.markdown('<div class="isc-eyebrow">Statut du pipeline</div>', unsafe_allow_html=True)
 artifacts = get_artifacts(active["id"])
+modules_done_full = set()
 
 cols = st.columns(6)
 for i, m in enumerate(MODULES):
     module_artifacts = {a["type"] for a in artifacts if a["module"] == m["id"]}
+    all_present = all(out in module_artifacts for out in m["outputs"])
+    if all_present:
+        modules_done_full.add(m["id"])
     with cols[i]:
         st.markdown(f"**{m['id']}**")
         for out in m["outputs"]:
             done = out in module_artifacts
-            st.markdown(f"{'✅' if done else '⬜'} {out}")
+            st.markdown(badge(out, "success" if done else "neutral"), unsafe_allow_html=True)
+
+module_rail(modules_done_full, label="", light=True)
 
 st.divider()
 
 # ── RUN PIPELINE ──────────────────────────────────────────────────────────────
-st.markdown("### 🚀 Run Pipeline")
+st.markdown('<div class="isc-eyebrow">Lancer le pipeline</div>', unsafe_allow_html=True)
 mode = st.radio("Mode", ["AUTO — M1→M6 complete", "MANUAL — module by module"])
 
 if "AUTO" in mode:
-    if st.button("▶️ Launch AUTO Pipeline", type="primary"):
+    if st.button("Lancer le pipeline AUTO", type="primary"):
         if not colab_url:
-            st.error("Enter Colab URL first.")
+            st.error("Entrez d'abord l'URL Colab.")
             st.stop()
 
-        pipeline = PCPipeline(colab_url, active["id"])
+        pipeline = PCPipeline(colab_url, active["id"], active["name"])
         progress_bar = st.progress(0)
         module_label = st.empty()
         live_status  = st.empty()
@@ -111,7 +120,7 @@ if "AUTO" in mode:
         for i, m in enumerate(MODULES):
             mid = m["id"]
             module_label.markdown(f"**Running {mid} — {m['name']} ({m['model']})**")
-            live_status.markdown("⏳ Starting...")
+            live_status.markdown("En cours de démarrage...")
 
             def make_callback(placeholder):
                 def cb(module, message):
@@ -123,37 +132,37 @@ if "AUTO" in mode:
             progress_bar.progress((i + 1) / len(MODULES))
 
             if result.get("status") == "error":
-                live_status.error(f"❌ {mid} failed: {result.get('message')}")
+                live_status.error(f"{mid} en échec : {result.get('message')}")
                 break
             else:
                 live_status.success(
-                    f"✅ **{mid}** done — {', '.join(m['outputs'])} saved to DB "
+                    f"**{mid}** terminé — {', '.join(m['outputs'])} enregistré en base "
                     f"(v{result.get('version', '?')})"
                 )
                 time.sleep(0.3)
 
         success = sum(1 for r in all_results.values() if r.get("status") == "success")
         if success == len(MODULES):
-            st.success("🎉 Pipeline complete! All 6 modules generated.")
-            st.page_link("pages/3_revue.py", label="Go to Revue", icon="🔍")
+            st.success("Pipeline terminé : les 6 modules ont été générés.")
+            st.page_link("pages/3_revue.py", label="Aller à la revue")
             update_project_status(active["id"], "complete")
         else:
-            st.warning(f"⚠️ {success}/6 modules succeeded.")
+            st.warning(f"{success}/6 modules réussis.")
 
 else:
     module_choice = st.selectbox(
         "Module", [f"{m['id']} — {m['name']}" for m in MODULES]
     )
-    if st.button("▶️ Run this module", type="primary"):
+    if st.button("Lancer ce module", type="primary"):
         if not colab_url:
-            st.error("Enter Colab URL first.")
+            st.error("Entrez d'abord l'URL Colab.")
             st.stop()
 
         mid = module_choice.split(" — ")[0]
-        pipeline = PCPipeline(colab_url, active["id"])
+        pipeline = PCPipeline(colab_url, active["id"], active["name"])
 
         live_status = st.empty()
-        live_status.markdown("⏳ Starting...")
+        live_status.markdown("En cours de démarrage...")
 
         def cb(module, message):
             live_status.markdown(message)
@@ -162,16 +171,16 @@ else:
 
         if result.get("status") == "success":
             live_status.success(
-                f"✅ {mid} done — saved to DB (v{result.get('version', '?')})"
+                f"{mid} terminé — enregistré en base (v{result.get('version', '?')})"
             )
             st.text_area(
-                "Output preview (first 1000 chars)",
+                "Aperçu de la sortie (1000 premiers caractères)",
                 result.get("output", "")[:1000],
                 height=200
             )
             extra = result.get("extra_files") or {}
             if extra:
-                st.caption(f"Additional artifacts: {', '.join(extra.keys())}")
-            st.page_link("pages/3_revue.py", label="Go to Revue", icon="🔍")
+                st.caption(f"Artefacts supplémentaires : {', '.join(extra.keys())}")
+            st.page_link("pages/3_revue.py", label="Aller à la revue")
         else:
-            live_status.error(f"❌ Error: {result.get('message', 'Unknown')}")
+            live_status.error(f"Erreur : {result.get('message', 'Inconnue')}")

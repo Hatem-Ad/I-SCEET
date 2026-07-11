@@ -17,19 +17,21 @@ import sys, os
 import difflib
 
 sys.path.append(os.path.join(os.path.dirname(__file__), "..", ".."))
+sys.path.append(os.path.join(os.path.dirname(__file__), ".."))
 from Backend.db import (get_artifacts, save_review, get_reviews,
                         get_artifact_history, baseline_artifact)
+from theme import inject_theme, page_header, PAPER
 
-st.set_page_config(page_title="Revue — I-SCEET", page_icon="🔍", layout="wide")
-st.title("🔍 Revue globale des artefacts")
-st.divider()
+st.set_page_config(page_title="Revue — I-SCEET", layout="wide")
+inject_theme()
+page_header("MODULE 03", "Revue globale des artefacts")
 
 active = st.session_state.get("active_project")
 if not active:
-    st.warning("⚠️ No active project. Go to **1 Upload** first.")
+    st.warning("Aucun projet actif. Rendez-vous sur **1 Upload** d'abord.")
     st.stop()
 
-st.markdown(f"**Project:** {active['name']} — DAL {active['dal_level']}")
+st.markdown(f"**Projet :** {active['name']} \u2014 DAL {active['dal_level']}")
 st.divider()
 
 artifacts = get_artifacts(active["id"])
@@ -45,54 +47,54 @@ for a in artifacts:
         by_module[a["module"]][a["type"]] = a
 
 if not by_module:
-    st.info("⬜ No artifacts yet. Run the pipeline on **2 Pipeline** first.")
+    st.info("Aucun artefact pour l'instant. Lancez le pipeline sur **2 Pipeline** d'abord.")
     st.stop()
 
 existing_reviews = {r["module"]: r for r in get_reviews(active["id"])}
 
 MODULE_INFO = {
-    "M1": ("📋 High Level Requirements",              ["SRD"]),
-    "M2": ("📐 Low Level Requirements + Architecture", ["SDDD", "DD", "CT"]),
-    "M3": ("💻 Source Code C",                         ["/src"]),
-    "M4": ("🧪 Low Level Tests",                       ["SUTC"]),
-    "M5": ("🧪 High Level Tests",                      ["SVTC"]),
-    "M6": ("🗺️ Traceability Matrix",                   ["TM"]),
+    "M1": ("High Level Requirements",              ["SRD"]),
+    "M2": ("Low Level Requirements + Architecture", ["SDDD", "DD", "CT"]),
+    "M3": ("Source Code C",                         ["/src"]),
+    "M4": ("Low Level Tests",                       ["SUTC"]),
+    "M5": ("High Level Tests",                      ["SVTC"]),
+    "M6": ("Traceability Matrix",                   ["TM"]),
 }
 
 # ── SUMMARY BAR ───────────────────────────────────────────────────────────────
 reviews = get_reviews(active["id"])
 c1, c2, c3, c4 = st.columns(4)
-c1.metric("Modules generated", f"{len(by_module)}/6")
-c2.metric("✅ Approved",  sum(1 for r in reviews if r["status"] == "approved"))
-c3.metric("⚠️ Revision",  sum(1 for r in reviews if r["status"] == "needs_revision"))
-c4.metric("❌ Rejected",  sum(1 for r in reviews if r["status"] == "rejected"))
+c1.metric("Modules générés", f"{len(by_module)}/6")
+c2.metric("Approuvés",  sum(1 for r in reviews if r["status"] == "approved"))
+c3.metric("À réviser",  sum(1 for r in reviews if r["status"] == "needs_revision"))
+c4.metric("Rejetés",  sum(1 for r in reviews if r["status"] == "rejected"))
 
 st.divider()
 
 
 def render_baseline_section(artifact, project_id, module_id):
-    """🔒 Baseline button, with a Beyond-Compare-style diff against the
-    previous version shown before the user confirms - so a baseline is
-    never locked in blind."""
+    """Bouton Baseline, avec un diff façon Beyond-Compare vs la version
+    précédente affiché avant confirmation - une baseline n'est jamais
+    verrouillée à l'aveugle."""
     st.divider()
-    st.markdown("**🔒 Baseline this artifact**")
+    st.markdown('<span class="isc-eyebrow">Baseline de cet artefact</span>', unsafe_allow_html=True)
 
     if artifact["status"] == "BASELINE":
         st.info(
-            f"This is already a BASELINE (v{artifact['version']}, "
-            f"baselined {artifact.get('baselined_at', '')[:16]} by "
+            f"Ceci est déjà une BASELINE (v{artifact['version']}, "
+            f"baselinée le {artifact.get('baselined_at', '')[:16]} par "
             f"{artifact.get('baselined_by', '—')}). "
-            f"Generate a new draft to continue working."
+            f"Générez un nouveau brouillon pour continuer."
         )
         return
 
-    st.caption(f"Current draft: v{artifact['version']} (DRAFT)")
+    st.caption(f"Brouillon actuel : v{artifact['version']} (DRAFT)")
 
     confirm_key = f"confirm_baseline_{artifact['id']}"
     show_key = f"show_diff_{artifact['id']}"
 
     if not st.session_state.get(show_key):
-        if st.button("🔒 Baseline this version", key=f"start_baseline_{artifact['id']}"):
+        if st.button("Baseliner cette version", key=f"start_baseline_{artifact['id']}"):
             st.session_state[show_key] = True
             st.rerun()
         return
@@ -106,50 +108,50 @@ def render_baseline_section(artifact, project_id, module_id):
             break
 
     if previous and artifact.get("content") and previous.get("content"):
-        st.markdown(f"**Diff vs previous version (v{previous['version']}, {previous['status']}):**")
+        st.markdown(f"**Diff vs version précédente (v{previous['version']}, {previous['status']}) :**")
         differ = difflib.HtmlDiff(wrapcolumn=80)
         html = differ.make_table(
             previous["content"].splitlines(),
             artifact["content"].splitlines(),
             fromdesc=f"v{previous['version']}",
-            todesc=f"v{artifact['version']} (about to be baselined)",
+            todesc=f"v{artifact['version']} (à baseliner)",
             context=True, numlines=3
         )
-        # HtmlDiff produces a bare table - wrap with minimal styling so it's readable
+        # HtmlDiff produces a bare table - wrap with palette-aligned styling
         styled = f"""
         <style>
-          table.diff {{font-family: monospace; font-size: 12px; width: 100%; border-collapse: collapse;}}
-          td.diff_header {{background: #f2f2f2;}}
-          .diff_add {{background-color: #d4f7d4;}}
-          .diff_chg {{background-color: #fff3b0;}}
-          .diff_sub {{background-color: #ffd6d6;}}
+          table.diff {{font-family: 'IBM Plex Mono', monospace; font-size: 12px; width: 100%; border-collapse: collapse;}}
+          td.diff_header {{background: {PAPER};}}
+          .diff_add {{background-color: #E3F3EA;}}
+          .diff_chg {{background-color: #FBF0DC;}}
+          .diff_sub {{background-color: #F7E4E1;}}
         </style>
         {html}
         """
         st.components.v1.html(styled, height=400, scrolling=True)
     elif not previous:
-        st.info("No previous version to compare against — this would be the first baseline.")
+        st.info("Aucune version précédente à comparer — ce serait la première baseline.")
     else:
-        st.warning("⚠️ Diff unavailable for this artifact type (no text content, e.g. DD/CT spreadsheets) — review the file directly before confirming.")
+        st.warning("Diff indisponible pour ce type d'artefact (pas de contenu texte, ex. classeurs DD/CT) — vérifiez le fichier directement avant de confirmer.")
 
     # ── CONFIRMATION ─────────────────────────────────────────────────────────
     description = st.text_area(
-        "Change description (required — feeds the Revision History and SCMP SCI Register)",
-        placeholder="ex: Approved for SOI #1 — corrected memory map, aligned with ARCH",
+        "Description du changement (requis — alimente l'historique de révision et le registre SCI du SCMP)",
+        placeholder="ex: Approuvé pour SOI #1 — carte mémoire corrigée, alignée avec ARCH",
         key=f"desc_{artifact['id']}"
     )
-    baselined_by = st.text_input("Baselined by", key=f"by_{artifact['id']}")
+    baselined_by = st.text_input("Baseliné par", key=f"by_{artifact['id']}")
 
     col1, col2 = st.columns([1, 1])
     with col1:
-        if st.button("✅ Confirm baseline", type="primary",
+        if st.button("Confirmer la baseline", type="primary",
                      disabled=not description.strip(), key=f"confirm_{artifact['id']}"):
             new_id = baseline_artifact(artifact["id"], description, baselined_by or "unknown")
             st.session_state[show_key] = False
-            st.success(f"🔒 Baselined — new artifact id {new_id}")
+            st.success(f"Baseliné — nouvel id d'artefact {new_id}")
             st.rerun()
     with col2:
-        if st.button("Cancel", key=f"cancel_{artifact['id']}"):
+        if st.button("Annuler", key=f"cancel_{artifact['id']}"):
             st.session_state[show_key] = False
             st.rerun()
 
@@ -159,12 +161,12 @@ def render_text_artifact(artifact, module_id):
     if module_id == "M3":
         st.code(content[:5000], language="c")
         if len(content) > 5000:
-            st.caption(f"... showing first 5000 of {len(content):,} chars")
+            st.caption(f"... affichage des 5000 premiers caractères sur {len(content):,}")
     else:
-        st.text_area("Full content", value=content, height=350,
+        st.text_area("Contenu complet", value=content, height=350,
                      key=f"content_{artifact['type']}_{artifact['id']}", disabled=True)
     st.download_button(
-        label=f"⬇️ Download {artifact['type']}",
+        label=f"Télécharger {artifact['type']}",
         data=content, file_name=f"{artifact['type']}_{active['name']}.txt",
         mime="text/plain", key=f"dl_{artifact['type']}_{artifact['id']}"
     )
@@ -173,7 +175,7 @@ def render_text_artifact(artifact, module_id):
 def render_xlsx_artifact(artifact):
     path = artifact.get("file_path", "")
     if not path or not os.path.exists(path):
-        st.warning(f"⚠️ File not found on disk: {path or '(no path saved)'}")
+        st.warning(f"Fichier introuvable sur le disque : {path or '(aucun chemin enregistré)'}")
         return
     try:
         import pandas as pd
@@ -184,10 +186,10 @@ def render_xlsx_artifact(artifact):
                 df = xls.parse(sheet)
                 st.dataframe(df, use_container_width=True, height=300)
     except Exception as e:
-        st.error(f"⚠️ Could not preview spreadsheet: {e}")
+        st.error(f"Aperçu du classeur impossible : {e}")
     with open(path, "rb") as f:
         st.download_button(
-            label=f"⬇️ Download {artifact['type']}.xlsx",
+            label=f"Télécharger {artifact['type']}.xlsx",
             data=f.read(), file_name=os.path.basename(path),
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             key=f"dl_{artifact['type']}_{artifact['id']}"
@@ -203,27 +205,27 @@ for module_id in ["M1", "M2", "M3", "M4", "M5", "M6"]:
     module_files = by_module[module_id]
     prev_review = existing_reviews.get(module_id)
 
-    status_icon = ("✅" if prev_review and prev_review["status"] == "approved"
-                   else "⚠️" if prev_review and prev_review["status"] == "needs_revision"
-                   else "❌" if prev_review and prev_review["status"] == "rejected"
-                   else "⬜")
+    status_code = ("OK" if prev_review and prev_review["status"] == "approved"
+                   else "REV" if prev_review and prev_review["status"] == "needs_revision"
+                   else "REJ" if prev_review and prev_review["status"] == "rejected"
+                   else "--")
 
     present_types = [t for t in expected_types if t in module_files]
-    types_label = " + ".join(present_types) if present_types else "no output yet"
+    types_label = " + ".join(present_types) if present_types else "aucune sortie"
 
     with st.expander(
-        f"{status_icon} {module_id} — {types_label} {module_desc}",
+        f"[{status_code}]  {module_id} \u2014 {types_label} \u2014 {module_desc}",
         expanded=(module_id == "M1")
     ):
-        tab_labels = [f"📄 {t}" for t in present_types] + ["✏️ Review"]
+        tab_labels = [t for t in present_types] + ["Revue"]
         tabs = st.tabs(tab_labels)
 
         for tab, artifact_type in zip(tabs, present_types):
             with tab:
                 artifact = module_files[artifact_type]
                 st.caption(
-                    f"Generated: {artifact.get('created_at', '')[:16]} | "
-                    f"Version: {artifact.get('version', 1)}"
+                    f"Généré : {artifact.get('created_at', '')[:16]} | "
+                    f"Version : {artifact.get('version', 1)}"
                 )
                 if artifact_type in ("DD", "CT"):
                     render_xlsx_artifact(artifact)
@@ -233,43 +235,43 @@ for module_id in ["M1", "M2", "M3", "M4", "M5", "M6"]:
 
         # ── REVIEW TAB (last tab) ───────────────────────────────────────────
         with tabs[-1]:
-            st.markdown("**Review decision:**")
+            st.markdown("**Décision de revue :**")
 
             status_options = ["approved", "needs_revision", "rejected"]
             status_labels = {
-                "approved": "✅ Approved",
-                "needs_revision": "⚠️ Needs revision",
-                "rejected": "❌ Rejected"
+                "approved": "Approuvé",
+                "needs_revision": "À réviser",
+                "rejected": "Rejeté"
             }
             current_status = prev_review["status"] if prev_review else "needs_revision"
 
             col1, col2 = st.columns([1, 2])
             with col1:
                 status = st.radio(
-                    "Status", status_options,
+                    "Statut", status_options,
                     format_func=lambda x: status_labels[x],
                     index=status_options.index(current_status),
                     key=f"status_{module_id}"
                 )
             with col2:
                 notes = st.text_area(
-                    "Review notes",
+                    "Notes de revue",
                     value=prev_review["notes"] if prev_review else "",
-                    placeholder="ex: HLR-006 timing incorrect, split into 2...\n"
-                                "ex: LLR-CLK-002-01 missing timeout handling...",
+                    placeholder="ex: HLR-006 timing incorrect, à scinder en 2...\n"
+                                "ex: LLR-CLK-002-01 gestion du timeout manquante...",
                     height=120, key=f"notes_{module_id}"
                 )
                 reviewer = st.text_input(
-                    "Reviewer name",
+                    "Nom du relecteur",
                     value=prev_review.get("reviewer", "") if prev_review else "",
                     key=f"reviewer_{module_id}"
                 )
 
-            if st.button(f"💾 Save review {module_id}", key=f"save_{module_id}", type="primary"):
+            if st.button(f"Enregistrer la revue {module_id}", key=f"save_{module_id}", type="primary"):
                 save_review(active["id"], module_id, "+".join(present_types), status, notes, reviewer)
-                st.success(f"✅ Review saved — {status_labels[status]}")
+                st.success(f"Revue enregistrée \u2014 {status_labels[status]}")
                 if status in ["needs_revision", "rejected"]:
-                    st.info("👉 Go to **5 TC Excel** to document your technical remarks for re-generation.")
+                    st.info("Rendez-vous sur **5 TC Excel** pour documenter vos remarques techniques en vue d'une régénération.")
                 st.rerun()
 
 st.divider()
@@ -279,12 +281,12 @@ reviews = get_reviews(active["id"])
 approved_count = sum(1 for r in reviews if r["status"] == "approved")
 
 if approved_count == len(by_module) == 6:
-    st.success("🎉 All 6 modules approved! Project complete.")
+    st.success("Les 6 modules sont approuvés. Projet complet.")
 elif len(reviews) > 0:
     needs_fix = sum(1 for r in reviews if r["status"] in ["needs_revision", "rejected"])
     if needs_fix > 0:
         st.warning(
-            f"⚠️ {needs_fix} artifact(s) need revision. "
-            "Go to **5 TC Excel** to add technical remarks, "
-            "then re-run the module on **2 Pipeline**."
+            f"{needs_fix} artefact(s) à réviser. "
+            "Rendez-vous sur **5 TC Excel** pour ajouter des remarques techniques, "
+            "puis relancez le module sur **2 Pipeline**."
         )

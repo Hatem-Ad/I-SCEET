@@ -478,6 +478,38 @@ def _parse_causes_effects(text: str) -> list:
     """
     lines = [l.rstrip() for l in text.split('\n') if l.strip()]
 
+    # ── Try the 4-column alias-separated format first (real M2 output,
+    # mirrors the original template's explicit Cause Alias/Effect Alias
+    # columns): | Cause Alias | Cause Writing Block | Effect Alias | Effect Writing Block |
+    alias4_rows = []
+    in_table4 = False
+    for line in lines:
+        stripped = line.strip()
+        if re.match(r'\|\s*Cause\s*Alias\s*\|\s*Cause\s*Writing\s*Block\s*\|'
+                    r'\s*Effect\s*Alias\s*\|\s*Effect\s*Writing\s*Block\s*\|',
+                    stripped, re.IGNORECASE):
+            in_table4 = True
+            continue
+        if not in_table4:
+            continue
+        if re.fullmatch(r'\|[\s\-|]+\|', stripped):
+            continue
+        cells = [c.strip() for c in stripped.strip('|').split('|')]
+        if len(cells) != 4:
+            in_table4 = False
+            continue
+        c_alias, c_text, e_alias, e_text = cells
+        # Re-embed the alias into the cause/effect text as "[Cn] text" /
+        # "[En] text" - this is exactly the shape the rest of the
+        # pipeline (rendering + Implementation-line alias matching)
+        # already expects, so nothing downstream needs to change to
+        # support this alternate input table shape.
+        cause_full = f"[{c_alias}] {c_text.strip('[]')}" if c_alias else c_text
+        effect_full = f"[{e_alias}] {e_text.strip('[]')}" if e_alias else (e_text or 'No effect')
+        alias4_rows.append({'cause': cause_full, 'subcause': '', 'effect': effect_full, 'group_first': True})
+    if alias4_rows:
+        return alias4_rows
+
     # ── Try markdown pipe-table format first ───────────────────────────────
     pipe_rows = []
     in_table = False
@@ -534,6 +566,7 @@ _NARRATIVE_SKIP_PATTERNS = [
     r'^\[(VAR|CONST|TYPE)\]',
     r'^Implementation\s*:?\s*$',
     r'^Narrative\s*:?\s*$',
+    r'^Causes\s*/\s*Effects\s*:?\s*$',
 ]
 
 
@@ -550,7 +583,7 @@ def _extract_narrative(text: str, exclude_title: str = '') -> list:
         line = line.strip()
         if not line:
             continue
-        if exclude_title and line == exclude_title:
+        if exclude_title and line.strip('"\'') == exclude_title.strip('"\''):
             continue
         if any(re.match(p, line, re.IGNORECASE) for p in _NARRATIVE_SKIP_PATTERNS):
             continue
@@ -583,9 +616,9 @@ def _parse_llr_block(block: str) -> dict:
     llr['TraceTags'] = [_clean_markdown_inline(t) for t in trace_tags]
 
     title_match = re.search(
-        r'\]\s*\n\s*([A-Za-z][^\n\[]{2,80})\n', block
+        r'\]\s*\n\s*(["\']?)([A-Za-z][^\n\[]{1,80}?)\1\s*\n', block
     )
-    raw_title = title_match.group(1).strip() if title_match else ''
+    raw_title = title_match.group(2).strip() if title_match else ''
     llr['Title'] = _clean_markdown_inline(raw_title)
 
     llr['CausesEffects'] = _parse_causes_effects(block)
@@ -605,20 +638,46 @@ def _parse_llr_block(block: str) -> dict:
     return llr
 
 
+def _normalize_numbered_subheadings(block: str) -> str:
+    """Real M2 output sometimes uses numbered markdown sub-headings for
+    function fields ("#### IV.1.1.1 Prototype") instead of the plain
+    "Prototype: value" colon-field the prompt specifies - this mirrors
+    the original gold-standard template's numbering style. Convert any
+    "#### <number> <Label>" heading into "<Label>:" so the existing
+    colon-field extractor (_parse_labeled_fields) handles both styles
+    uniformly, whichever one a given run actually produced."""
+    return re.sub(
+        r'^#{4}\s+(?:IV\.\d+\.\d+\.\d+\s+)?(.+?)\s*$',
+        lambda m: f"{m.group(1).strip()}:",
+        block, flags=re.MULTILINE
+    )
+
+
 def _parse_function_block(header_text: str, block: str) -> dict:
     """Parse one function's content. header_text is the text captured from
     a '### function_name()' markdown header when available (preferred,
     matches real M2 output); falls back to extracting the name from the
     Prototype field when parsing a legacy FUNCTION_START/END block instead
     (header_text='' in that case)."""
+    block = _normalize_numbered_subheadings(block)
     fn = _parse_labeled_fields(
         block, FUNCTION_FIELDS,
-        extra_stop_patterns=[r'\n\s*LLR-[A-Z]+-\d+(?:-\d+)?']
+        extra_stop_patterns=[
+            r'\n\s*LLR-[A-Z]+-\d+(?:-\d+)?',
+            r'\n\s*Data Dictionary Tags\s*:',
+            r'\n\s*Requirement Block\s*:',
+            r'\n\s*Requirement\s*:',
+        ]
     )
 
     name = ''
     if header_text:
         name = re.sub(r'[\*`]', '', header_text).strip()
+        # Strip a leading "IV.1.1 " (or similar) numbering prefix some
+        # runs prepend to the function name in the heading itself -
+        # without this, the heading renders as "IV.1.1 IV.1.1
+        # function_name" once the builder adds its own numbering.
+        name = re.sub(r'^IV\.\d+\.\d+\s+', '', name).strip()
         name = re.sub(r'\(\)\s*$', '', name).strip()
     if not name:
         name_match = re.search(r'\bProto(?:type)?:\s*[\w\s\*`]+?\b(\w+)\s*\(', block)
@@ -683,7 +742,15 @@ def _parse_m2_output(text: str) -> dict:
         elif num == 3:
             result['referenced_docs'] = content
         elif num == 4:
-            fn_pattern = re.compile(r'^###\s+(.+?)\n(.*?)(?=^###\s+|\Z)',
+            # Function boundaries are level-3 headers ONLY ("### IV.1.1
+            # boot_manager_process" or "### function_name()") - NOT
+            # level-4 sub-field headers ("#### IV.1.1.1 Prototype"),
+            # which a real M2 run now sometimes emits (mirroring the
+            # numbered-subsection style of the original gold-standard
+            # template). Using #{2,4} here previously treated every
+            # sub-field as its own "function", causing duplicated
+            # headers and every field reading as empty/None.
+            fn_pattern = re.compile(r'^#{3}\s+(.+?)\n(.*?)(?=^#{3}\s+|\Z)',
                                      re.DOTALL | re.MULTILINE)
             fn_matches = list(fn_pattern.finditer(content))
             if fn_matches:
@@ -729,11 +796,11 @@ def _extract_dd_tags(text: str) -> dict:
 
     for m in re.finditer(r'\[VAR\]\s*(.+)', text):
         parts = [p.strip() for p in m.group(1).split('|')]
-        parts += [''] * (8 - len(parts))
+        parts += [''] * (9 - len(parts))
         dd['variables'].append({
             'name': parts[0], 'type': parts[1], 'range': parts[2],
             'description': parts[3], 'unit': parts[4], 'initializer': parts[5],
-            'producers': parts[6], 'consumers': parts[7],
+            'producers': parts[6], 'consumers': parts[7], 'comments': parts[8],
         })
 
     for m in re.finditer(r'\[CONST\]\s*(.+)', text):
@@ -806,7 +873,7 @@ def _render_causes_effects_table(doc, rows: list):
     _style_label_cell(effect_label, "Effect")
 
     for j, row_data in enumerate(rows, start=1):
-        cause_text = row_data['cause'] or 'Unconditional'
+        cause_text = row_data['cause'] if row_data['cause'] not in ('', '-') else 'Unconditional'
         effect_text = row_data['effect'] or 'No effect'
         _style_data_cell(tbl.cell(1, j), cause_text, bg=CAUSE_BG)
         _style_data_cell(tbl.cell(2, j), effect_text)
@@ -814,38 +881,46 @@ def _render_causes_effects_table(doc, rows: list):
     doc.add_paragraph()
 
 
-def _render_llr(doc, llr: dict, prefix: str = ""):
-    if llr.get('Title'):
-        p = doc.add_paragraph()
-        run = p.add_run(llr['Title'])
-        run.bold = True
-        run.font.name = FONT_NAME
-        run.font.size = Pt(11.5)
-        run.font.color.rgb = DARK_TITLE
-        p.paragraph_format.space_before = Pt(10)
-        p.paragraph_format.space_after  = Pt(3)
+def _add_field_subheading(doc, text, italic=True, color=None):
+    """Exact style-map match for the numbered field sub-headings inside a
+    function/LLR block (Prototype, Parameters, ..., Causes/Effects,
+    Implementation): Arial 10pt bold, italic + black by default, except
+    'Requirement' which is bold NON-italic DARK_TITLE (#1c1c1c) — this is
+    a different style tier from the top-level Section/function headings,
+    do not reuse _add_heading(level=3) for these."""
+    p = doc.add_paragraph()
+    run = p.add_run(text)
+    run.bold = True
+    run.italic = italic
+    run.font.name = FONT_NAME
+    run.font.size = Pt(10)
+    run.font.color.rgb = color if color is not None else BLACK
+    p.paragraph_format.space_before = Pt(8)
+    p.paragraph_format.space_after  = Pt(3)
+    return p
 
+
+def _render_llr(doc, llr: dict, prefix: str = ""):
     _add_id_heading(doc, llr['ID'])
     for tag in llr.get('TraceTags', []):
         color = JUS_GREEN if tag.upper().startswith('JUS.') else COV_BLUE
         _add_italic_blue(doc, f"[{tag}]", color=color)
     _add_horizontal_rule(doc)
 
-    _add_heading(doc, "Causes / Effects", 3)
+    _add_field_subheading(doc, "Causes / Effects")
     _render_causes_effects_table(doc, llr.get('CausesEffects', []))
 
     if llr.get('Narrative'):
         # bracketed-label lines ("[X]: ...") -> "Implementation" (template
         # format); plain prose -> "Narrative" (backward-compat fallback).
         is_bracketed = all(re.match(r'^\[.+?\]\s*:', l) for l in llr['Narrative'])
-        _add_heading(doc, "Implementation" if is_bracketed else "Narrative", 3)
+        _add_field_subheading(doc, "Implementation" if is_bracketed else "Narrative")
         for line in llr['Narrative']:
             _add_body(doc, line)
 
     trace_val = llr.get('Design-Traceability', '')
-    trace_color = TRACE_GREEN if trace_val.strip().lower() == 'derived' else None
     meta_pairs = [
-        ("Design-Traceability", trace_val, trace_color),
+        ("Design-Traceability", trace_val, None),
         ("Mean-of-Verification", llr.get('Mean-of-Verification', ''), None),
         ("Rationale", llr.get('Rationale', ''), None),
     ]
@@ -898,8 +973,9 @@ def _render_function(doc, fn: dict, prefix: str = ""):
     p.paragraph_format.space_before = Pt(14)
     p.paragraph_format.space_after  = Pt(6)
 
-    def _sub_heading(n, label):
-        _add_heading(doc, f"{prefix}.{n} {label}" if prefix else label, 3)
+    def _sub_heading(n, label, italic=True, color=None):
+        text = f"{prefix}.{n} {label}" if prefix else label
+        _add_field_subheading(doc, text, italic=italic, color=color)
 
     # .1 Prototype
     _sub_heading(1, "Prototype")
@@ -952,21 +1028,26 @@ def _render_function(doc, fn: dict, prefix: str = ""):
     # .7 Requirement — one shared numbered heading, may contain several
     # LLR blocks (each carries its own -01/-02 ID suffix).
     if fn.get('LLRs'):
-        _sub_heading(7, "Requirement")
+        _sub_heading(7, "Requirement", italic=False, color=DARK_TITLE)
         for llr in fn['LLRs']:
             _render_llr(doc, llr, prefix=prefix)
 
 
 def _extract_doc_id(introduction_text: str, version: str) -> str:
-    if introduction_text:
-        m = re.search(r'Document ID:\s*(SDDD-[A-Za-z0-9]+)', introduction_text)
-        if m:
-            return m.group(1)
+    """Compute the Document ID purely from the pipeline-supplied version
+    string - never search M2's own raw text for a self-assigned
+    "Document ID: SDDD-xxx" line, since M2 is not supposed to assign one
+    (baseline/minor tracking is the database's job, not the model's).
+    Format matches the project's unified convention: bare "SDDD-{baseline}"
+    when minor is 0 (i.e. this could be a baseline), "SDDD-{baseline}.{minor}"
+    otherwise - never zero-padded (SDDD-1, not SDDD-001)."""
     try:
-        num = int(float(version))
-        return f"SDDD-{num:03d}"
+        baseline_str, _, minor_str = str(version).partition('.')
+        baseline = int(baseline_str)
+        minor = int(minor_str) if minor_str else 0
+        return f"SDDD-{baseline}" if minor == 0 else f"SDDD-{baseline}.{minor}"
     except (ValueError, TypeError):
-        return "SDDD-001"
+        return "SDDD-1"
 
 
 # ── MAIN BUILDER ─────────────────────────────────────────────────────────────
@@ -1079,3 +1160,59 @@ def build_sddd(m2_output: str, output_path: str, version: str = "1.0",
     os.makedirs(os.path.dirname(output_path) or '.', exist_ok=True)
     doc.save(output_path)
     return output_path
+
+
+if __name__ == "__main__":
+    import sys as _sys
+
+    if len(_sys.argv) < 2:
+        print("Usage: python3 sddd_builder.py <texte_brut.txt> [version] [output.docx]")
+        print("Exemple: python3 sddd_builder.py SDDD_stm32f303_boot_drv.txt 1.0 sddd_test.docx")
+        _sys.exit(1)
+
+    _input_path = _sys.argv[1]
+    _version = _sys.argv[2] if len(_sys.argv) > 2 else "1.0"
+    _output_path = _sys.argv[3] if len(_sys.argv) > 3 else "SDDD_test.docx"
+
+    if not os.path.exists(_input_path):
+        print(f"❌ Fichier introuvable: {_input_path}")
+        _sys.exit(1)
+
+    _text = open(_input_path, encoding="utf-8").read()
+    print(f"📄 Texte brut lu: {len(_text)} caractères (~{len(_text)//4} tokens)")
+
+    try:
+        build_sddd(_text, _output_path, version=_version, project="I-SCEET")
+    except Exception as e:
+        print(f"❌ ERREUR pendant la génération: {e}")
+        import traceback
+        traceback.print_exc()
+        _sys.exit(1)
+
+    print(f"✅ Document généré: {_output_path}")
+
+    # Diagnostic rapide intégré
+    _d = Document(_output_path)
+    _count_dup = sum(1 for p in _d.paragraphs if re.match(r'(IV\.\d+\.\d+) \1', p.text))
+    _count_notfound = sum(1 for p in _d.paragraphs if 'could not be parsed' in p.text)
+    _count_narrative = sum(1 for p in _d.paragraphs if p.text.strip() == 'Narrative')
+    _count_dd_leak = sum(1 for p in _d.paragraphs if 'Data Dictionary' in p.text)
+    _count_functions = sum(1 for p in _d.paragraphs if re.match(r'^IV\.\d+\.\d+\s+\w+\(\)', p.text.strip()))
+    _count_llr = sum(1 for p in _d.paragraphs if re.match(r'^LLR-[A-Z]+-\d+', p.text.strip()))
+
+    print()
+    print("=" * 60)
+    print("DIAGNOSTIC")
+    print("=" * 60)
+    print(f"{'❌' if _count_dup else '✅'} En-têtes de fonction dupliqués: {_count_dup}")
+    print(f"{'❌' if _count_notfound else '✅'} Causes/Effets non trouvées: {_count_notfound}")
+    print(f"{'❌' if _count_narrative else '✅'} Sections 'Narrative' (devrait être 0): {_count_narrative}")
+    print(f"{'❌' if _count_dd_leak else '✅'} 'Data Dictionary Tags' qui fuit: {_count_dd_leak}")
+    print(f"ℹ️  Fonctions détectées: {_count_functions}")
+    print(f"ℹ️  LLR détectées: {_count_llr}")
+    print(f"ℹ️  Tables dans le document: {len(_d.tables)}")
+    print()
+    if _count_dup == 0 and _count_notfound == 0 and _count_narrative == 0 and _count_dd_leak == 0:
+        print("🎉 Aucun bug connu détecté.")
+    else:
+        print("⚠️  Des problèmes ont été détectés — voir le détail ci-dessus.")

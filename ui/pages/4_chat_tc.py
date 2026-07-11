@@ -15,17 +15,19 @@ import streamlit as st
 import sys, os
 
 sys.path.append(os.path.join(os.path.dirname(__file__), "..", ".."))
+sys.path.append(os.path.join(os.path.dirname(__file__), ".."))
 from Backend.db import get_artifacts, save_chat, get_chat_history
 from orchestrator.pc_pipeline import PCPipeline
+from theme import inject_theme, page_header
 
-st.set_page_config(page_title="Chat — I-SCEET", page_icon="💬", layout="wide")
-st.title("💬 Chat consultatif")
+st.set_page_config(page_title="Chat — I-SCEET", layout="wide")
+inject_theme()
+page_header("MODULE 04", "Chat consultatif")
 st.caption("Posez des questions sur les artefacts générés. Consultatif uniquement — ne modifie pas les outputs. Modèle : M6 (Phi-4), indépendant des générateurs.")
-st.divider()
 
 active = st.session_state.get("active_project")
 if not active:
-    st.warning("⚠️ Aucun projet actif. Retournez sur **1 Upload**.")
+    st.warning("Aucun projet actif. Retournez sur **1 Upload**.")
     st.stop()
 
 artifacts = get_artifacts(active["id"])
@@ -42,7 +44,7 @@ for a in artifacts:
         module_artifacts[a["module"]] = a
 
 if not module_artifacts:
-    st.info("⬜ Aucun artefact généré. Lancez d'abord le pipeline.")
+    st.info("Aucun artefact généré. Lancez d'abord le pipeline.")
     st.stop()
 
 colab_url = st.session_state.get("colab_url", "")
@@ -65,7 +67,7 @@ st.divider()
 
 history = get_chat_history(active["id"])
 if history:
-    st.markdown("### Historique")
+    st.markdown('<div class="isc-eyebrow">Historique</div>', unsafe_allow_html=True)
     for h in history[-10:]:
         with st.chat_message("user"):
             st.markdown(f"**[{h['target']}]** {h['question']}")
@@ -87,7 +89,7 @@ if question:
             )
             st.markdown(answer)
         else:
-            with st.spinner("🧠 M6 (Phi-4) analyse les artefacts... (peut prendre 1-2 min si le modèle doit charger)"):
+            with st.spinner("M6 (Phi-4) analyse les artefacts... (peut prendre 1-2 min si le modèle doit charger)"):
                 pipeline = PCPipeline(colab_url, active["id"])
                 chat_artifacts = {m: a.get("content", "") for m, a in module_artifacts.items()}
                 result = pipeline.chat(target, question, chat_artifacts)
@@ -95,10 +97,10 @@ if question:
             if result.get("status") == "success":
                 answer = result.get("answer", "(empty response)")
             else:
-                answer = f"⚠️ {result.get('answer', 'Unknown error')}"
+                answer = f"Erreur — {result.get('answer', 'Unknown error')}"
             st.markdown(answer)
 
         save_chat(active["id"], target, question, answer)
 
 st.divider()
-st.caption("⚠️ Le chat est consultatif. Pour corriger un artefact → utilisez **5 TC Excel** puis relancez le module.")
+st.caption("Le chat est consultatif. Pour corriger un artefact, utilisez **5 TC Excel** puis relancez le module.")

@@ -9,13 +9,15 @@ import streamlit as st
 import sys, os
 
 sys.path.append(os.path.join(os.path.dirname(__file__), "..", ".."))
+sys.path.append(os.path.join(os.path.dirname(__file__), ".."))
 from Backend.db import (get_all_projects, get_artifacts,
                          get_reviews, get_tc_remarks, delete_project,
-                         get_all_baselines)
+                         get_all_baselines, set_active_project_id, clear_active_project_id)
+from theme import inject_theme, page_header, module_rail, badge
 
-st.set_page_config(page_title="Historique — I-SCEET", page_icon="📁", layout="wide")
-st.title("📁 Historique des projets")
-st.divider()
+st.set_page_config(page_title="Historique — I-SCEET", layout="wide")
+inject_theme()
+page_header("WORKSPACE 06 • CONFIGURATION", "Historique des projets & enregistrements SCI", "Inspect project history, review completion, baseline records and lifecycle configuration evidence.")
 
 projects = get_all_projects()
 
@@ -23,7 +25,7 @@ if not projects:
     st.info("Aucun projet. Créez-en un via **1 Upload**.")
     st.stop()
 
-status_icons = {"in_progress": "🟡", "complete": "🟢", "error": "🔴"}
+status_icon = {"in_progress": "🟡", "complete": "🟢", "error": "🔴"}
 MODULES = ["M1","M2","M3","M4","M5","M6"]
 
 for p in projects:
@@ -32,20 +34,17 @@ for p in projects:
     tc        = get_tc_remarks(p["id"])
     done_modules = [a["module"] for a in artifacts if a["module"] in MODULES]
 
-    icon = status_icons.get(p["status"], "⚪")
-    with st.expander(f"{icon} {p['name']} — DAL {p['dal_level']} — {p['created_at'][:10]}"):
+    generated_modules = set(done_modules)
+    effective_status = "complete" if len(generated_modules) == 6 else p.get("status", "in_progress")
+    icon = status_icon.get(effective_status, "⚪")
+    with st.expander(f"{icon}  {p['name']} — DAL {p['dal_level']} — {p['created_at'][:10]}"):
         col1, col2, col3, col4 = st.columns(4)
         col1.metric("Modules générés", f"{len(done_modules)}/6")
         col2.metric("Revues",          len(reviews))
-        col3.metric("TC Remarks",      len(tc))
+        col3.metric("Remarques TC",    len(tc))
         col4.metric("Statut",          p["status"])
 
-        st.markdown("**Pipeline :**")
-        pipeline_str = " → ".join([
-            f"{'✅' if m in done_modules else '⬜'} {m}"
-            for m in MODULES
-        ])
-        st.markdown(pipeline_str)
+        module_rail(set(done_modules), label="", light=True)
 
         if artifacts:
             st.markdown("**Artefacts :**")
@@ -56,12 +55,12 @@ for p in projects:
         if reviews:
             st.markdown("**Revues :**")
             approved = sum(1 for r in reviews if r["status"] == "approved")
-            st.caption(f"✅ {approved} approuvés / {len(reviews)} total")
+            st.markdown(badge(f"{approved} approuvés / {len(reviews)} total", "success"), unsafe_allow_html=True)
 
         # ── SCI REGISTER (feeds SCMP §8) ─────────────────────────────────────
         baselines = get_all_baselines(p["id"])
         if baselines:
-            st.markdown("**📋 SCI Register — baselines (feeds SCMP §8):**")
+            st.markdown('<div class="isc-eyebrow">SCI Register — baselines (alimente SCMP §8)</div>', unsafe_allow_html=True)
             sci_rows = [{
                 "Document ID": f"{b['type']}-{b['baseline_number']}" if b['type'] not in
                     ("PSAC", "SDP", "SVP", "SCMP", "SQAP") else b['type'],
@@ -74,7 +73,7 @@ for p in projects:
             import pandas as pd
             csv = pd.DataFrame(sci_rows).to_csv(index=False).encode("utf-8")
             st.download_button(
-                "⬇️ Export SCI Register (CSV — paste into SCMP §8)",
+                "Exporter le SCI Register (CSV — à coller dans SCMP §8)",
                 data=csv, file_name=f"SCI_Register_{p['name']}.csv",
                 mime="text/csv", key=f"sci_{p['id']}"
             )
@@ -83,22 +82,25 @@ for p in projects:
         col1, col2, col3 = st.columns(3)
 
         with col1:
-            if st.button("📂 Activer ce projet", key=f"activate_{p['id']}"):
+            if st.button("Activer ce projet", key=f"activate_{p['id']}"):
                 st.session_state["active_project"] = p
-                st.success(f"✅ Projet **{p['name']}** activé !")
+                set_active_project_id(p["id"])
+                st.success(f"Projet **{p['name']}** activé.")
                 st.switch_page("pages/2_pipeline.py")
 
         with col2:
-            if st.button("📊 Voir TC", key=f"tc_{p['id']}"):
+            if st.button("Voir TC", key=f"tc_{p['id']}"):
                 st.session_state["active_project"] = p
+                set_active_project_id(p["id"])
                 st.switch_page("pages/5_tc_excel.py")
 
         with col3:
-            if st.button("🗑️ Supprimer", key=f"delete_{p['id']}", type="secondary"):
+            if st.button("Supprimer", key=f"delete_{p['id']}", type="secondary"):
                 if st.session_state.get(f"confirm_delete_{p['id']}"):
                     delete_project(p["id"])
                     if st.session_state.get("active_project", {}).get("id") == p["id"]:
-                        del st.session_state["active_project"]
+                        st.session_state.pop("active_project", None)
+                        clear_active_project_id()
                     st.success("Projet supprimé.")
                     st.rerun()
                 else:

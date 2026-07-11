@@ -83,6 +83,7 @@ def init_db():
         document TEXT NOT NULL,
         req_id TEXT,
         remark TEXT NOT NULL,
+        reviewer TEXT,
         status TEXT DEFAULT 'open',
         model_response TEXT,
         created_at TEXT DEFAULT (datetime('now')),
@@ -97,6 +98,13 @@ def migrate_db():
     step checks before acting."""
     conn = get_connection()
     c = conn.cursor()
+
+    c.execute("PRAGMA table_info(tc_remarks)")
+    tc_cols = {row[1] for row in c.fetchall()}
+    if "reviewer" not in tc_cols:
+        c.execute("ALTER TABLE tc_remarks ADD COLUMN reviewer TEXT")
+        conn.commit()
+        print("✅ DB migrated: tc_remarks.reviewer added")
 
     c.execute("PRAGMA table_info(artifacts)")
     cols = {row[1]: row[2] for row in c.fetchall()}
@@ -189,6 +197,57 @@ def get_project(project_id):
     row = c.fetchone()
     conn.close()
     return dict(row) if row else None
+
+
+# ── PERSISTED ACTIVE PROJECT ──────────────────────────────────────────────────
+# The custom HTML navigation can trigger a full page navigation. Persisting the
+# active project in SQLite makes the selected project survive page changes,
+# reruns and returns to the home dashboard.
+def _ensure_app_state_table(conn):
+    conn.execute("""CREATE TABLE IF NOT EXISTS app_state (
+        key TEXT PRIMARY KEY,
+        value TEXT
+    )""")
+
+
+def set_active_project_id(project_id):
+    conn = get_connection()
+    _ensure_app_state_table(conn)
+    conn.execute(
+        "INSERT INTO app_state(key, value) VALUES('active_project_id', ?) "
+        "ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+        (str(project_id),),
+    )
+    conn.commit()
+    conn.close()
+
+
+def clear_active_project_id():
+    conn = get_connection()
+    _ensure_app_state_table(conn)
+    conn.execute("DELETE FROM app_state WHERE key='active_project_id'")
+    conn.commit()
+    conn.close()
+
+
+def get_active_project_persisted():
+    conn = get_connection()
+    _ensure_app_state_table(conn)
+    row = conn.execute(
+        "SELECT value FROM app_state WHERE key='active_project_id'"
+    ).fetchone()
+    conn.close()
+    if not row:
+        return None
+    try:
+        project_id = int(row["value"])
+    except (TypeError, ValueError):
+        clear_active_project_id()
+        return None
+    project = get_project(project_id)
+    if project is None:
+        clear_active_project_id()
+    return project
 
 
 def update_project_status(project_id, status):
@@ -432,15 +491,23 @@ def get_chat_history(project_id):
     return [dict(r) for r in rows]
 
 
-def save_tc_remark(project_id, module, document, req_id, remark):
+def save_tc_remark(project_id, module, document, req_id, remark, reviewer=""):
     conn = get_connection()
     c = conn.cursor()
-    c.execute("INSERT INTO tc_remarks (project_id, module, document, req_id, remark) VALUES (?, ?, ?, ?, ?)",
-              (project_id, module, document, req_id, remark))
+    c.execute("INSERT INTO tc_remarks (project_id, module, document, req_id, remark, reviewer) VALUES (?, ?, ?, ?, ?, ?)",
+              (project_id, module, document, req_id, remark, reviewer))
     tid = c.lastrowid
     conn.commit()
     conn.close()
     return tid
+
+
+def delete_tc_remark(tc_id):
+    conn = get_connection()
+    c = conn.cursor()
+    c.execute("DELETE FROM tc_remarks WHERE id=?", (tc_id,))
+    conn.commit()
+    conn.close()
 
 
 def get_tc_remarks(project_id):
