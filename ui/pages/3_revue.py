@@ -24,11 +24,28 @@ from theme import inject_theme, page_header, PAPER
 
 st.set_page_config(page_title="Revue — I-SCEET", layout="wide")
 inject_theme()
-page_header("MODULE 03", "Revue globale des artefacts")
+page_header("WORKSPACE 03 • ASSURANCE", "Revue des artefacts & gestion des baselines", "Review generated outputs, compare versions, record decisions and freeze baseline references.")
 
 active = st.session_state.get("active_project")
 if not active:
-    st.warning("Aucun projet actif. Rendez-vous sur **1 Upload** d'abord.")
+    st.markdown(
+    """
+    <div style="
+        background-color: #FFFBD6;
+        color: #111827;
+        border: 1px solid #F0E7A0;
+        border-radius: 10px;
+        padding: 0.9rem 1rem;
+        font-size: 0.95rem;
+        font-weight: 500;
+        margin-bottom: 1rem;
+    ">
+        Aucun projet actif. Rendez-vous sur
+        <strong>1 Upload</strong> d'abord.
+    </div>
+    """,
+    unsafe_allow_html=True,
+)
     st.stop()
 
 st.markdown(f"**Projet :** {active['name']} \u2014 DAL {active['dal_level']}")
@@ -184,7 +201,7 @@ def render_xlsx_artifact(artifact):
         for tab, sheet in zip(tabs, xls.sheet_names):
             with tab:
                 df = xls.parse(sheet)
-                st.dataframe(df, use_container_width=True, height=300)
+                st.dataframe(df, width="stretch", height=300)
     except Exception as e:
         st.error(f"Aperçu du classeur impossible : {e}")
     with open(path, "rb") as f:

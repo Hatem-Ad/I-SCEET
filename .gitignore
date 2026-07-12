@@ -6,5 +6,6 @@ __pycache__/
 *.pt
 *.so
 *.o
-data/Outputs/
+outputs/
+docs.zip
 data/models/

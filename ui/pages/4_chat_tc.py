@@ -22,12 +22,30 @@ from theme import inject_theme, page_header
 
 st.set_page_config(page_title="Chat — I-SCEET", layout="wide")
 inject_theme()
-page_header("MODULE 04", "Chat consultatif")
+page_header("WORKSPACE 04 • CONSULTATION", "Consultation des artefacts", "Use the consultative model to interrogate the engineering corpus without modifying any approved artefact.")
 st.caption("Posez des questions sur les artefacts générés. Consultatif uniquement — ne modifie pas les outputs. Modèle : M6 (Phi-4), indépendant des générateurs.")
 
 active = st.session_state.get("active_project")
 if not active:
-    st.warning("Aucun projet actif. Retournez sur **1 Upload**.")
+    
+    st.markdown(
+    """
+    <div style="
+        background-color: #FFFBD6;
+        color: #111827;
+        border: 1px solid #F0E7A0;
+        border-radius: 10px;
+        padding: 0.9rem 1rem;
+        font-size: 0.95rem;
+        font-weight: 500;
+        margin-bottom: 1rem;
+    ">
+        Aucun projet actif. Rendez-vous sur
+        <strong>1 Upload</strong> d'abord.
+    </div>
+    """,
+    unsafe_allow_html=True,
+)
     st.stop()
 
 artifacts = get_artifacts(active["id"])

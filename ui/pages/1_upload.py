@@ -25,7 +25,7 @@ os.makedirs(UPLOAD_DIR, exist_ok=True)
 
 st.set_page_config(page_title="Upload — I-SCEET", layout="wide")
 inject_theme()
-page_header("MODULE 01", "Nouveau projet — Upload documents")
+page_header("WORKSPACE 01 • INPUTS", "Programme d’entrée & configuration projet", "Create the active project and manage controlled source documents used by the generation pipeline.")
 
 
 # ── TEXT EXTRACTION ────────────────────────────────────────────────────────────
@@ -96,8 +96,12 @@ if st.button("Créer le projet", type="primary", disabled=not project_name):
         st.error(f"Un projet nommé **{project_name}** existe déjà.")
     else:
         pid = create_project(project_name, dal_level)
-        st.session_state["active_project"] = {"id": pid, "name": project_name, "dal_level": dal_level}
-        st.success(f"Projet **{project_name}** créé (ID: {pid})")
+        st.session_state["last_created_project_id"] = pid
+        st.session_state["history_notice"] = (
+            f"Projet **{project_name}** créé. Il n’est pas activé automatiquement : "
+            "cliquez sur **Activer ce projet**."
+        )
+        st.switch_page("pages/6_historique.py")
 
 st.divider()
 

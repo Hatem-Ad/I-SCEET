@@ -184,7 +184,7 @@ def create_project(name, dal_level="A"):
 def get_all_projects():
     conn = get_connection()
     c = conn.cursor()
-    c.execute("SELECT * FROM projects ORDER BY created_at DESC")
+    c.execute("SELECT * FROM projects ORDER BY id DESC")
     rows = c.fetchall()
     conn.close()
     return [dict(r) for r in rows]

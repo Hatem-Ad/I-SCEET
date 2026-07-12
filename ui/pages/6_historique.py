@@ -12,12 +12,16 @@ sys.path.append(os.path.join(os.path.dirname(__file__), "..", ".."))
 sys.path.append(os.path.join(os.path.dirname(__file__), ".."))
 from Backend.db import (get_all_projects, get_artifacts,
                          get_reviews, get_tc_remarks, delete_project,
-                         get_all_baselines, set_active_project_id, clear_active_project_id)
-from theme import inject_theme, page_header, module_rail, badge
+                         get_all_baselines)
+from theme import inject_theme, page_header, module_rail, badge, render_sci_table
 
 st.set_page_config(page_title="Historique — I-SCEET", layout="wide")
 inject_theme()
 page_header("WORKSPACE 06 • CONFIGURATION", "Historique des projets & enregistrements SCI", "Inspect project history, review completion, baseline records and lifecycle configuration evidence.")
+
+creation_notice = st.session_state.pop("history_notice", None)
+if creation_notice:
+    st.success(creation_notice)
 
 projects = get_all_projects()
 
@@ -32,9 +36,9 @@ for p in projects:
     artifacts = get_artifacts(p["id"])
     reviews   = get_reviews(p["id"])
     tc        = get_tc_remarks(p["id"])
-    done_modules = [a["module"] for a in artifacts if a["module"] in MODULES]
+    done_modules = {a["module"] for a in artifacts if a["module"] in MODULES}
 
-    generated_modules = set(done_modules)
+    generated_modules = done_modules
     effective_status = "complete" if len(generated_modules) == 6 else p.get("status", "in_progress")
     icon = status_icon.get(effective_status, "⚪")
     with st.expander(f"{icon}  {p['name']} — DAL {p['dal_level']} — {p['created_at'][:10]}"):
@@ -44,7 +48,7 @@ for p in projects:
         col3.metric("Remarques TC",    len(tc))
         col4.metric("Statut",          p["status"])
 
-        module_rail(set(done_modules), label="", light=True)
+        module_rail(done_modules, label="", light=True)
 
         if artifacts:
             st.markdown("**Artefacts :**")
@@ -69,7 +73,7 @@ for p in projects:
                 "By": b.get("baselined_by") or "—",
                 "Description": b.get("change_description") or "—",
             } for b in baselines]
-            st.dataframe(sci_rows, use_container_width=True, hide_index=True)
+            render_sci_table(sci_rows, width="stretch", columns=["Document ID","Version","Baselined","By","Description",],)
             import pandas as pd
             csv = pd.DataFrame(sci_rows).to_csv(index=False).encode("utf-8")
             st.download_button(
@@ -84,15 +88,16 @@ for p in projects:
         with col1:
             if st.button("Activer ce projet", key=f"activate_{p['id']}"):
                 st.session_state["active_project"] = p
-                set_active_project_id(p["id"])
                 st.success(f"Projet **{p['name']}** activé.")
                 st.switch_page("pages/2_pipeline.py")
 
         with col2:
             if st.button("Voir TC", key=f"tc_{p['id']}"):
-                st.session_state["active_project"] = p
-                set_active_project_id(p["id"])
-                st.switch_page("pages/5_tc_excel.py")
+                active_project = st.session_state.get("active_project")
+                if active_project and active_project.get("id") == p["id"]:
+                    st.switch_page("pages/5_tc_excel.py")
+                else:
+                    st.warning("Activez d’abord ce projet avec le bouton **Activer ce projet**.")
 
         with col3:
             if st.button("Supprimer", key=f"delete_{p['id']}", type="secondary"):
@@ -100,7 +105,6 @@ for p in projects:
                     delete_project(p["id"])
                     if st.session_state.get("active_project", {}).get("id") == p["id"]:
                         st.session_state.pop("active_project", None)
-                        clear_active_project_id()
                     st.success("Projet supprimé.")
                     st.rerun()
                 else:

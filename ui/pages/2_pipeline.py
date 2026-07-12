@@ -12,21 +12,36 @@
 """
 
 import streamlit as st
-import sys, os, time
+import sys, os, time, textwrap
 
 sys.path.append(os.path.join(os.path.dirname(__file__), "..", ".."))
 sys.path.append(os.path.join(os.path.dirname(__file__), ".."))
 from Backend.db import get_artifacts, update_project_status
 from orchestrator.pc_pipeline import PCPipeline
-from theme import inject_theme, page_header, module_rail, badge
+from theme import inject_theme, page_header, module_rail, badge, LINE, TEXT_900
 
 st.set_page_config(page_title="Pipeline — I-SCEET", layout="wide")
 inject_theme()
-page_header("MODULE 02", "Pipeline M1 \u2192 M6")
+page_header("WORKSPACE 02 • PIPELINE", "Pipeline M1 \u2192 M6")
 
 active = st.session_state.get("active_project")
 if not active:
-    st.warning("Aucun projet actif. Rendez-vous sur **1 Upload** d'abord.")
+    st.markdown(
+    """
+    <div style="
+        background-color: #FFFBD6;
+        color: #111827;
+        border: 1px solid #F0E7A0;
+        border-radius: 10px;
+        padding: 0.9rem 1rem;
+        font-size: 0.95rem;
+        font-weight: 500;
+    ">
+        Aucun projet actif. Rendez-vous sur <strong>1 Upload</strong> d'abord.
+    </div>
+    """,
+    unsafe_allow_html=True,
+)
     st.stop()
 
 st.markdown(f"**Projet :** {active['name']} \u2014 DAL {active['dal_level']}")
@@ -47,12 +62,20 @@ st.markdown('<div class="isc-eyebrow">Connexion Colab</div>', unsafe_allow_html=
 
 from dotenv import load_dotenv
 load_dotenv()
-default_url = os.getenv("COLAB_URL", "")
+LEGACY_COLAB_URL = "https://your-domain.ngrok-free.app"
+DEFAULT_COLAB_URL = "https://your-domain.ngrok-free.app"
+default_url = os.getenv("COLAB_URL", DEFAULT_COLAB_URL).strip() or DEFAULT_COLAB_URL
+if default_url == LEGACY_COLAB_URL:
+    default_url = DEFAULT_COLAB_URL
+
+stored_url = st.session_state.get("colab_url", default_url)
+if stored_url == LEGACY_COLAB_URL:
+    stored_url = DEFAULT_COLAB_URL
 
 colab_url = st.text_input(
     "Colab URL (ngrok)",
-    placeholder="https://your-domain.ngrok-free.app",
-    value=st.session_state.get("colab_url", default_url)
+    placeholder=DEFAULT_COLAB_URL,
+    value=stored_url,
 )
 if colab_url:
     st.session_state["colab_url"] = colab_url
@@ -92,10 +115,19 @@ for i, m in enumerate(MODULES):
     if all_present:
         modules_done_full.add(m["id"])
     with cols[i]:
-        st.markdown(f"**{m['id']}**")
-        for out in m["outputs"]:
-            done = out in module_artifacts
-            st.markdown(badge(out, "success" if done else "neutral"), unsafe_allow_html=True)
+        badges_html = "".join(
+            f"<div style='margin-top:.35rem'>{badge(out, 'success' if out in module_artifacts else 'neutral')}</div>"
+            for out in m["outputs"]
+        )
+        st.markdown(
+            textwrap.dedent(f"""
+            <div style='background:#fff;border:1px solid {LINE};border-radius:14px;padding:.85rem .8rem;min-height:100%'>
+              <div style="font-weight:700;color:{TEXT_900};margin-bottom:.2rem">{m['id']}</div>
+              {badges_html}
+            </div>
+            """).strip(),
+            unsafe_allow_html=True,
+        )
 
 module_rail(modules_done_full, label="", light=True)
 

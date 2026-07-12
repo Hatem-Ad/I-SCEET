@@ -28,12 +28,29 @@ from theme import inject_theme, page_header, badge
 
 st.set_page_config(page_title="TC Excel — I-SCEET", layout="wide")
 inject_theme()
-page_header("MODULE 05", "Technical Comments (TC Excel)")
+page_header("WORKSPACE 05 • CORRECTIVE ACTION", "Remarques techniques & boucle de correction", "Capture review remarks, export or import TC logs and relaunch the relevant generation modules with correction context.")
 st.caption("Documentez vos remarques techniques. Toutes les remarques 'open' d'un module sont envoyées ensemble, en un clic, pour résolution automatique.")
 
 active = st.session_state.get("active_project")
 if not active:
-    st.warning("Aucun projet actif.")
+    
+    st.markdown(
+    """
+    <div style="
+        background-color: #FFFBD6;
+        color: #111827;
+        border: 1px solid #F0E7A0;
+        border-radius: 10px;
+        padding: 0.9rem 1rem;
+        font-size: 0.95rem;
+        font-weight: 500;
+        margin-bottom: 1rem;
+    ">
+        Aucun projet actif.
+    </div>
+    """,
+    unsafe_allow_html=True,
+)
     st.stop()
 
 artifacts = get_artifacts(active["id"])
@@ -190,7 +207,7 @@ with tab3:
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             type="primary"
         )
-        st.dataframe(df, use_container_width=True)
+        st.dataframe(df, width="stretch")
     else:
         st.info("Aucune remarque à exporter.")
 
@@ -199,7 +216,7 @@ with tab3:
     uploaded_tc = st.file_uploader("Uploader TC.xlsx mis à jour", type=["xlsx"])
     if uploaded_tc:
         df_import = pd.read_excel(uploaded_tc)
-        st.dataframe(df_import, use_container_width=True)
+        st.dataframe(df_import, width="stretch")
         if st.button("Importer les remarques", type="primary"):
             count = 0
             for _, row in df_import.iterrows():

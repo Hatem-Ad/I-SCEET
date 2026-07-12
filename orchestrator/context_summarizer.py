@@ -122,6 +122,9 @@ def summarize_sddd_for_m3(sddd_text: str) -> str:
         lines.extend(dd_tags)
 
     return "\n".join(lines)
+
+
+def summarize_srd_for_m2(srd_text: str) -> str:
     """Condensed SRD: Section III (Architecture) kept close to verbatim
     (already compact/tabular), Section IV reduced to per-HLR essentials,
     Section V (PDS<->HLR summary) kept as-is. Cover page, Section I
