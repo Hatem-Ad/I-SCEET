@@ -21,8 +21,14 @@ from collections import defaultdict
 
 sys.path.append(os.path.join(os.path.dirname(__file__), "..", ".."))
 sys.path.append(os.path.join(os.path.dirname(__file__), ".."))
-from Backend.db import (get_artifacts, save_tc_remark,
-                         get_tc_remarks, update_tc_status, delete_tc_remark)
+from Backend.db import (
+    get_artifacts,
+    save_tc_remark,
+    get_tc_remarks,
+    update_tc_status,
+    delete_tc_remark,
+    get_project_runtime_value,
+)
 from orchestrator.pc_pipeline import PCPipeline
 from theme import inject_theme, page_header, badge
 
@@ -53,10 +59,20 @@ if not active:
 )
     st.stop()
 
+st.markdown(f"**Projet actif :** {active['name']} — DAL {active['dal_level']}")
+st.divider()
+
 artifacts = get_artifacts(active["id"])
 available_modules = sorted({a["module"] for a in artifacts
                             if a["module"] in ["M1","M2","M3","M4","M5","M6"]})
-colab_url = st.session_state.get("colab_url", "")
+colab_url = (
+    st.session_state.get(f"colab_url_project_{active['id']}")
+    or get_project_runtime_value(active["id"], "colab_url", "")
+    or st.session_state.get("colab_url", "")
+)
+if colab_url:
+    st.session_state[f"colab_url_project_{active['id']}"] = colab_url
+    st.session_state["colab_url"] = colab_url
 
 tab1, tab2, tab3 = st.tabs(["Ajouter une remarque", "Liste des remarques", "Export / Import Excel"])
 

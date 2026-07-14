@@ -107,28 +107,39 @@ def _sidebar_brand():
 
 
 def _sidebar_nav():
+    """Render Streamlit-native navigation.
+
+    The previous implementation used raw HTML ``<a>`` links. Those links
+    forced a full browser reload through the reverse proxy, which could create
+    a new Streamlit session, lose ``session_state`` and visually leave the old
+    page underneath the new one during navigation. ``st.page_link`` keeps the
+    navigation inside Streamlit and preserves the active project context.
+    """
     active = _current_page_key()
     items = [
-        ("home", "./", "home", "", "Accueil"),
-        ("upload", "./upload", "file", "01", "Inputs & projet"),
-        ("pipeline", "./pipeline", "gear", "02", "Pipeline M1 → M6"),
-        ("review", "./revue", "check", "03", "Revue & baseline"),
-        ("consultation", "./chat_tc", "chat", "04", "Consultation"),
-        ("comments", "./tc_excel", "pencil", "05", "Technical comments"),
-        ("history", "./historique", "grid", "06", "Historique"),
+        ("home", "app.py", "⌂", "", "Accueil"),
+        ("upload", "pages/1_upload.py", "▤", "01", "Inputs & projet"),
+        ("pipeline", "pages/2_pipeline.py", "⚙", "02", "Pipeline M1 → M6"),
+        ("review", "pages/3_revue.py", "✓", "03", "Revue & baseline"),
+        ("consultation", "pages/4_chat_tc.py", "◫", "04", "Consultation"),
+        ("comments", "pages/5_tc_excel.py", "✎", "05", "Technical comments"),
+        ("history", "pages/6_historique.py", "▦", "06", "Historique"),
     ]
 
-    nav_html = ["<div class='isc-side-section'>Navigation</div>"]
-    for idx, (key, href, icon, num, label) in enumerate(items):
-        if idx == 1:
-            nav_html.append("<div class='isc-side-section isc-workspace-heading'>Workspaces</div>")
-        cls = "isc-side-link active" if key == active else "isc-side-link"
-        number = f"<span class='isc-nav-num'>{num}</span>" if num else ""
-        nav_html.append(
-            f"<a class='{cls}' href='{href}' target='_self'><span class='isc-nav-icon'>{_svg(icon)}</span>{number}<span class='isc-nav-label'>{label}</span></a>"
-        )
+    st.sidebar.markdown("<div class='isc-side-section isc-navigation-heading'>Navigation</div>", unsafe_allow_html=True)
+    st.sidebar.markdown("<div style='height:.55rem'></div>", unsafe_allow_html=True)
+    with st.sidebar:
+        for idx, (key, page, icon, num, label) in enumerate(items):
+            if idx == 1:
+                st.markdown(
+                    "<div class='isc-side-section isc-workspace-heading'>Workspaces</div>",
+                    unsafe_allow_html=True,
+                )
+            marker = "●" if key == active else ""
+            number = f" {num}" if num else ""
+            st.page_link(page, label=f"{marker} {icon}{number}  {label}".strip())
 
-    nav_html.append(
+    st.sidebar.markdown(
         """
         <div class='isc-side-section isc-status-heading'>Platform status</div>
         <div class='isc-status-card'>
@@ -139,32 +150,42 @@ def _sidebar_nav():
           <div class='aircraft-disc'>""" + _svg("plane") + """</div>
           <div><strong>I-SCEET v2.1.0</strong><br><span>© 2026 · Engineering assurance platform</span></div>
         </div>
-        """
+        """,
+        unsafe_allow_html=True,
     )
-    st.sidebar.markdown("".join(nav_html), unsafe_allow_html=True)
 
 
 
 def _refresh_active_project_from_session():
-    """Refresh an already selected project without auto-selecting one.
+    """Resolve one authoritative active project for every workspace.
 
-    A fresh Streamlit browser session must start with no active project. A
-    project becomes active only when the user explicitly activates it from
-    Workspace 06 (Historique). Once selected, Streamlit session state keeps it
-    available while navigating between pages in the same session.
+    Resolution order:
+      1. Refresh the project already stored in the current Streamlit session.
+      2. When a hard reload or a new page session removed ``session_state``,
+         restore the explicitly activated project from SQLite.
+
+    No project is selected arbitrarily: the persisted value is written only
+    when the user clicks an activation/navigation action in Workspace 06.
     """
-    active = st.session_state.get("active_project")
-    if not active or active.get("id") is None:
-        return None
     try:
-        from Backend.db import get_project
-        fresh = get_project(active["id"])
-        if fresh:
-            st.session_state["active_project"] = fresh
-            return fresh
-        st.session_state.pop("active_project", None)
+        from Backend.db import get_active_project_persisted, get_project
+
+        active = st.session_state.get("active_project")
+        if active and active.get("id") is not None:
+            fresh = get_project(active["id"])
+            if fresh:
+                st.session_state["active_project"] = fresh
+                return fresh
+            st.session_state.pop("active_project", None)
+
+        persisted = get_active_project_persisted()
+        if persisted:
+            st.session_state["active_project"] = persisted
+            return persisted
     except Exception:
-        return active
+        # The UI remains available even if the persistence layer is temporarily
+        # unavailable; pages will display the normal "Aucun projet actif" state.
+        return st.session_state.get("active_project")
     return None
 
 
@@ -277,6 +298,7 @@ def inject_theme():
               .isc-side-project .meta{{color:#73869A;font-size:.69rem;margin-top:.15rem}}
               /* Sidebar navigation */
               .isc-side-section{{color:#7E8CA0;text-transform:uppercase;letter-spacing:.16em;font-size:.68rem;font-weight:800;margin:1rem 1rem .5rem}}
+              .isc-navigation-heading{{margin-bottom:.85rem}}
               .isc-workspace-heading{{margin-top:1.25rem}}
               .isc-side-link{{position:relative;display:grid;grid-template-columns:28px 30px 1fr;align-items:center;gap:.55rem;margin:.38rem 1rem;padding:.86rem .95rem;border-radius:14px;text-decoration:none!important;color:#E3EBF4;background:rgba(255,255,255,.035);border:1px solid rgba(255,255,255,.05);transition:.15s ease}}
               .isc-side-link:first-of-type{{grid-template-columns:28px 1fr}}
@@ -288,6 +310,47 @@ def inject_theme():
               .isc-nav-num{{color:var(--red);font-size:.88rem;font-weight:600}}
               .isc-nav-label{{font-size:.96rem;font-weight:500;color:#E8EEF5;white-space:nowrap}}
               .isc-side-link.active .isc-nav-label{{font-weight:600;color:#fff}}
+
+              /* Native sidebar navigation — no hard browser reload */
+              section[data-testid='stSidebar'] [data-testid='stPageLink']{{
+                margin:.38rem 1rem!important;
+              }}
+              section[data-testid='stSidebar'] [data-testid='stPageLink'] a{{
+                min-height:54px!important;
+                display:flex!important;
+                align-items:center!important;
+                width:100%!important;
+                padding:.82rem .95rem!important;
+                border-radius:14px!important;
+                text-decoration:none!important;
+                background:rgba(255,255,255,.035)!important;
+                border:1px solid rgba(255,255,255,.05)!important;
+                transition:background .12s ease,border-color .12s ease!important;
+              }}
+              section[data-testid='stSidebar'] [data-testid='stPageLink'] a:hover{{
+                background:rgba(255,255,255,.075)!important;
+                border-color:rgba(255,255,255,.09)!important;
+              }}
+              section[data-testid='stSidebar'] [data-testid='stPageLink'] a[aria-current='page']{{
+                background:linear-gradient(90deg,rgba(239,51,64,.16),rgba(255,255,255,.045))!important;
+                border-color:rgba(239,51,64,.34)!important;
+                box-shadow:inset 3px 0 0 #EF3340!important;
+              }}
+              section[data-testid='stSidebar'] [data-testid='stPageLink'] a p,
+              section[data-testid='stSidebar'] [data-testid='stPageLink'] a span,
+              section[data-testid='stSidebar'] [data-testid='stPageLink'] a div{{
+                color:#E8EEF5!important;
+                -webkit-text-fill-color:#E8EEF5!important;
+                font-family:'IBM Plex Sans',sans-serif!important;
+                font-size:.94rem!important;
+                font-weight:500!important;
+                opacity:1!important;
+              }}
+              section[data-testid='stSidebar'] [data-testid='stPageLink'] a[aria-current='page'] p{{
+                color:#FFFFFF!important;
+                -webkit-text-fill-color:#FFFFFF!important;
+                font-weight:700!important;
+              }}
               .isc-status-heading{{margin-top:2rem}}
               .isc-status-card{{margin:.35rem 1rem 0;padding:1rem 1.05rem;background:rgba(255,255,255,.045);border:1px solid rgba(255,255,255,.07);border-radius:14px}}
               .isc-status-row{{display:flex;align-items:center;gap:.55rem;color:#DDE8F2;font-size:.85rem}}
@@ -413,6 +476,98 @@ def inject_theme():
               [role='option']{{background:#FFFFFF!important;color:{TEXT_900}!important}}
               [role='option']:hover{{background:#F2F6FA!important}}
 
+              /* Main workspace — enforce readable dark text on light backgrounds */
+              .block-container{{
+                color:#111827!important;
+              }}
+              [data-testid='stAppViewContainer'] main [data-testid='stMarkdownContainer'],
+              [data-testid='stAppViewContainer'] main [data-testid='stMarkdownContainer'] p,
+              [data-testid='stAppViewContainer'] main [data-testid='stMarkdownContainer'] strong,
+              [data-testid='stAppViewContainer'] main [data-testid='stMarkdownContainer'] em,
+              [data-testid='stAppViewContainer'] main [data-testid='stMarkdownContainer'] li{{
+                color:#182231!important;
+                -webkit-text-fill-color:#182231!important;
+                opacity:1!important;
+              }}
+
+              /* Section labels used in Pipeline, Review, Consultation and TC pages */
+              .isc-eyebrow{{
+                color:#182231!important;
+                -webkit-text-fill-color:#182231!important;
+                font-family:'Manrope',sans-serif!important;
+                font-size:.76rem!important;
+                font-weight:800!important;
+                letter-spacing:.13em!important;
+                text-transform:uppercase!important;
+                opacity:1!important;
+              }}
+
+              /* Page links such as “Modifier les documents d'input…” */
+              [data-testid='stPageLink'] a,
+              [data-testid='stPageLink'] a p,
+              [data-testid='stPageLink'] a span,
+              .stPageLink a,
+              .stPageLink a p,
+              .stPageLink a span{{
+                color:#182231!important;
+                -webkit-text-fill-color:#182231!important;
+                opacity:1!important;
+              }}
+
+              /* Native widget labels */
+              [data-testid='stTextInput'] label,
+              [data-testid='stTextInput'] label p,
+              [data-testid='stTextArea'] label,
+              [data-testid='stTextArea'] label p,
+              [data-testid='stNumberInput'] label,
+              [data-testid='stNumberInput'] label p,
+              [data-testid='stSelectbox'] label,
+              [data-testid='stSelectbox'] label p,
+              [data-testid='stRadio'] > label,
+              [data-testid='stRadio'] > label p,
+              [data-testid='stCheckbox'] label,
+              [data-testid='stCheckbox'] label p,
+              [data-testid='stFileUploader'] label,
+              [data-testid='stFileUploader'] label p,
+              [data-testid='stWidgetLabel'],
+              [data-testid='stWidgetLabel'] p{{
+                color:#182231!important;
+                -webkit-text-fill-color:#182231!important;
+                opacity:1!important;
+                font-weight:600!important;
+              }}
+
+              /* Radio choices: AUTO / MANUAL */
+              [data-testid='stRadio'] [role='radiogroup'] label,
+              [data-testid='stRadio'] [role='radiogroup'] label p,
+              [data-testid='stRadio'] [role='radiogroup'] label span,
+              [role='radiogroup'] label,
+              [role='radiogroup'] label p,
+              [role='radiogroup'] label span{{
+                color:#182231!important;
+                -webkit-text-fill-color:#182231!important;
+                opacity:1!important;
+              }}
+
+              /* Captions and help text on light pages */
+              [data-testid='stCaptionContainer'],
+              [data-testid='stCaptionContainer'] p,
+              [data-testid='stCaptionContainer'] span,
+              [data-testid='stHelp'],
+              [data-testid='stHelp'] p{{
+                color:#435267!important;
+                -webkit-text-fill-color:#435267!important;
+                opacity:1!important;
+              }}
+
+              /* Tabs and common status text */
+              [data-testid='stTabs'] button,
+              [data-testid='stTabs'] button p,
+              [data-testid='stTabs'] button span{{
+                color:#182231!important;
+                -webkit-text-fill-color:#182231!important;
+              }}
+
               /* Warning / information messages — readable dark text */
               [data-testid='stAlert'],
               [data-testid='stAlert'] p,
@@ -505,35 +660,47 @@ def inject_theme():
                 -webkit-text-fill-color:#FFFFFF!important;
               }}
 
-              /* SCI Register — native dataframe white theme */
-              [data-testid='stDataFrame']{{
+              /* SCI Register — native dataframe/table white theme */
+              [data-testid='stDataFrame'],
+              [data-testid='stTable']{{
                 background:#FFFFFF!important;
                 border:1px solid #DCE4EC!important;
                 border-radius:12px!important;
                 overflow:hidden!important;
                 color:#111827!important;
+                box-shadow:0 8px 20px rgba(15,29,44,.035)!important;
               }}
               [data-testid='stDataFrame'] > div,
               [data-testid='stDataFrame'] div[role='grid'],
               [data-testid='stDataFrame'] div[role='row'],
-              [data-testid='stDataFrame'] div[role='gridcell']{{
+              [data-testid='stDataFrame'] div[role='gridcell'],
+              [data-testid='stTable'] table,
+              [data-testid='stTable'] thead,
+              [data-testid='stTable'] tbody,
+              [data-testid='stTable'] tr,
+              [data-testid='stTable'] td{{
                 background-color:#FFFFFF!important;
                 color:#111827!important;
+                -webkit-text-fill-color:#111827!important;
               }}
-              [data-testid='stDataFrame'] div[role='columnheader']{{
+              [data-testid='stDataFrame'] div[role='columnheader'],
+              [data-testid='stTable'] th{{
                 background-color:#F3F6F9!important;
                 color:#182231!important;
+                -webkit-text-fill-color:#182231!important;
                 font-weight:600!important;
               }}
-              [data-testid='stDataFrame'] div[role='gridcell']{{
+              [data-testid='stDataFrame'] div[role='gridcell'],
+              [data-testid='stTable'] td,
+              [data-testid='stTable'] th{{
                 border-color:#DCE4EC!important;
               }}
 
-              /* SCI Register — custom HTML table fallback */
+              /* SCI Register — controlled HTML table */
               .isc-sci-table-wrap{{
                 width:100%!important;
-                max-height:360px;
-                overflow:auto;
+                max-height:360px!important;
+                overflow:auto!important;
                 background:#FFFFFF!important;
                 border:1px solid #DCE4EC!important;
                 border-radius:12px!important;
@@ -546,27 +713,112 @@ def inject_theme():
                 color:#111827!important;
                 font-size:.82rem!important;
               }}
+              .isc-sci-table thead,
+              .isc-sci-table thead tr,
               .isc-sci-table thead th{{
                 position:sticky;
                 top:0;
                 z-index:1;
                 background:#F3F6F9!important;
                 color:#182231!important;
+                -webkit-text-fill-color:#182231!important;
                 text-align:left!important;
                 font-weight:700!important;
                 padding:.72rem .78rem!important;
                 border-bottom:1px solid #DCE4EC!important;
                 white-space:nowrap!important;
               }}
+              .isc-sci-table tbody,
+              .isc-sci-table tbody tr,
               .isc-sci-table tbody td{{
                 background:#FFFFFF!important;
                 color:#111827!important;
+                -webkit-text-fill-color:#111827!important;
                 padding:.7rem .78rem!important;
                 border-bottom:1px solid #E8EDF3!important;
                 vertical-align:top!important;
               }}
               .isc-sci-table tbody tr:last-child td{{border-bottom:none!important}}
               .isc-sci-table tbody tr:hover td{{background:#F8FAFC!important}}
+
+              /* ============================================================
+                 WORKSPACE 04 — CONSULTATIVE CHAT
+                 Final high-specificity contrast rules for Streamlit chat.
+                 ============================================================ */
+              [data-testid='stAppViewContainer'] main [data-testid='stChatMessage']{{
+                background:#FFFFFF!important;
+                color:#182231!important;
+                border:1px solid #DCE4EC!important;
+                border-radius:16px!important;
+                box-shadow:0 6px 18px rgba(15,29,44,.035)!important;
+                margin-bottom:.65rem!important;
+              }}
+
+              [data-testid='stAppViewContainer'] main [data-testid='stChatMessage'] [data-testid='stMarkdownContainer'],
+              [data-testid='stAppViewContainer'] main [data-testid='stChatMessage'] [data-testid='stMarkdownContainer'] p,
+              [data-testid='stAppViewContainer'] main [data-testid='stChatMessage'] [data-testid='stMarkdownContainer'] span,
+              [data-testid='stAppViewContainer'] main [data-testid='stChatMessage'] [data-testid='stMarkdownContainer'] div,
+              [data-testid='stAppViewContainer'] main [data-testid='stChatMessage'] [data-testid='stMarkdownContainer'] strong,
+              [data-testid='stAppViewContainer'] main [data-testid='stChatMessage'] [data-testid='stMarkdownContainer'] em,
+              [data-testid='stAppViewContainer'] main [data-testid='stChatMessage'] [data-testid='stMarkdownContainer'] li,
+              [data-testid='stAppViewContainer'] main [data-testid='stChatMessage'] [data-testid='stMarkdownContainer'] a,
+              [data-testid='stAppViewContainer'] main [data-testid='stChatMessage'] [data-testid='stMarkdownContainer'] code,
+              [data-testid='stAppViewContainer'] main [data-testid='stChatMessage'] [data-testid='stMarkdownContainer'] pre{{
+                color:#182231!important;
+                -webkit-text-fill-color:#182231!important;
+                opacity:1!important;
+              }}
+
+              [data-testid='stAppViewContainer'] main [data-testid='stChatMessage'] [data-testid='stMarkdownContainer'] code,
+              [data-testid='stAppViewContainer'] main [data-testid='stChatMessage'] [data-testid='stMarkdownContainer'] pre{{
+                background:#F3F6F9!important;
+                border-color:#DCE4EC!important;
+              }}
+
+              [data-testid='stAppViewContainer'] main [data-testid='stChatMessage'] svg{{
+                color:#52657B!important;
+                fill:none!important;
+                stroke:currentColor!important;
+              }}
+
+              [data-testid='stAppViewContainer'] main [data-testid='stChatInput'],
+              [data-testid='stAppViewContainer'] main [data-testid='stChatInput'] > div,
+              [data-testid='stAppViewContainer'] main [data-testid='stChatInput'] [data-baseweb='textarea'],
+              [data-testid='stAppViewContainer'] main [data-testid='stChatInput'] [data-baseweb='base-input']{{
+                background:#FFFFFF!important;
+                color:#111827!important;
+                border-color:#C9D5E2!important;
+              }}
+
+              [data-testid='stAppViewContainer'] main [data-testid='stChatInput'] textarea,
+              [data-testid='stAppViewContainer'] main [data-testid='stChatInput'] input,
+              [data-testid='stAppViewContainer'] main [data-testid='stChatInputTextArea']{{
+                background:#FFFFFF!important;
+                color:#111827!important;
+                -webkit-text-fill-color:#111827!important;
+                caret-color:#111827!important;
+                opacity:1!important;
+              }}
+
+              [data-testid='stAppViewContainer'] main [data-testid='stChatInput'] textarea::placeholder,
+              [data-testid='stAppViewContainer'] main [data-testid='stChatInput'] input::placeholder,
+              [data-testid='stAppViewContainer'] main [data-testid='stChatInputTextArea']::placeholder{{
+                color:#77869A!important;
+                -webkit-text-fill-color:#77869A!important;
+                opacity:1!important;
+              }}
+
+              [data-testid='stAppViewContainer'] main [data-testid='stChatInput'] button{{
+                background:linear-gradient(180deg,#EF3340 0%,#C9212B 100%)!important;
+                border:1px solid #C9212B!important;
+                color:#FFFFFF!important;
+                opacity:1!important;
+              }}
+              [data-testid='stAppViewContainer'] main [data-testid='stChatInput'] button svg{{
+                color:#FFFFFF!important;
+                fill:none!important;
+                stroke:#FFFFFF!important;
+              }}
 
               .stPageLink a{{border-radius:14px!important}}
               @media(max-width:1050px){{section[data-testid='stSidebar']{{width:280px!important;min-width:280px!important;max-width:280px!important}}[data-testid='stSidebarContent']{{width:280px!important}}.block-container{{max-width:100%!important}}.isc-topbar{{margin-bottom:.55rem}}.isc-hero{{min-height:340px;padding:2.4rem 2.2rem}}.isc-hero-title{{font-size:2.25rem}}}}
@@ -578,6 +830,54 @@ def inject_theme():
     )
     _sidebar_brand()
     _sidebar_nav()
+
+def render_sci_table(rows, columns=None, width: str = "stretch"):
+    """Render the SCI register as a controlled light HTML table.
+
+    This avoids Streamlit's canvas-based dataframe theme, which may remain
+    dark even when the rest of the application uses a light theme.
+    """
+    rows = list(rows or [])
+    if columns is None:
+        columns = list(rows[0].keys()) if rows else []
+    columns = list(columns)
+
+    if not columns:
+        st.caption("Aucune donnée SCI à afficher.")
+        return
+
+    header_html = "".join(
+        f"<th>{html.escape(str(column))}</th>" for column in columns
+    )
+    if rows:
+        body_html = "".join(
+            "<tr>"
+            + "".join(
+                f"<td>{html.escape(str(row.get(column, '—')))}</td>"
+                for column in columns
+            )
+            + "</tr>"
+            for row in rows
+        )
+    else:
+        body_html = (
+            f"<tr><td colspan='{len(columns)}' "
+            "style='text-align:center;color:#77869A'>Aucune donnée SCI</td></tr>"
+        )
+
+    width_style = "100%" if width in ("stretch", "container", None) else str(width)
+    st.markdown(
+        f"""
+        <div class="isc-sci-table-wrap" style="width:{html.escape(width_style)}">
+          <table class="isc-sci-table">
+            <thead><tr>{header_html}</tr></thead>
+            <tbody>{body_html}</tbody>
+          </table>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
 def page_header(eyebrow: str, title: str, subtitle: str | None = None):
     if subtitle is None:
         subtitle = "Controlled generation, review and certification traceability."
@@ -654,56 +954,6 @@ def badge(text: str, kind: str = "neutral") -> str:
     fg, bg = colors.get(kind, colors["neutral"])
     return f"<span style='display:inline-flex;padding:.32rem .68rem;border-radius:999px;border:1px solid {fg}33;background:{bg};color:{fg};font-size:.72rem;font-weight:700'>{text}</span>"
 
-
-
-
-def render_sci_table(
-    rows: list[dict],
-    columns: list[str] | None = None,
-    width: str | int = "stretch",
-    max_height: int = 360,
-) -> None:
-    """Render the SCI register as a deterministic white HTML table.
-
-    This avoids Streamlit's canvas-based dataframe renderer, whose dark
-    theme cannot always be overridden reliably with CSS.
-    """
-    if not rows:
-        st.info("Aucune entrée dans le SCI Register.")
-        return
-
-    if columns is None:
-        columns = list(rows[0].keys())
-
-    if width == "stretch":
-        width_css = "100%"
-    elif isinstance(width, int):
-        width_css = f"{width}px"
-    else:
-        width_css = str(width)
-
-    header_html = "".join(
-        f"<th>{html.escape(str(column))}</th>" for column in columns
-    )
-
-    body_rows = []
-    for row in rows:
-        cells = "".join(
-            f"<td>{html.escape(str(row.get(column, '—')))}</td>"
-            for column in columns
-        )
-        body_rows.append(f"<tr>{cells}</tr>")
-
-    table_html = (
-        f"<div class='isc-sci-table-wrap' "
-        f"style='width:{html.escape(width_css)};max-height:{int(max_height)}px'>"
-        "<table class='isc-sci-table'>"
-        f"<thead><tr>{header_html}</tr></thead>"
-        f"<tbody>{''.join(body_rows)}</tbody>"
-        "</table></div>"
-    )
-
-    st.markdown(table_html, unsafe_allow_html=True)
 
 def nav_card(num: str, title: str, desc: str):
     st.markdown(

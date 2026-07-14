@@ -10,9 +10,15 @@ import sys, os
 
 sys.path.append(os.path.join(os.path.dirname(__file__), "..", ".."))
 sys.path.append(os.path.join(os.path.dirname(__file__), ".."))
-from Backend.db import (get_all_projects, get_artifacts,
-                         get_reviews, get_tc_remarks, delete_project,
-                         get_all_baselines)
+from Backend.db import (
+    get_all_projects,
+    get_artifacts,
+    get_reviews,
+    get_tc_remarks,
+    delete_project,
+    get_all_baselines,
+    set_active_project_id,
+)
 from theme import inject_theme, page_header, module_rail, badge, render_sci_table
 
 st.set_page_config(page_title="Historique — I-SCEET", layout="wide")
@@ -87,17 +93,19 @@ for p in projects:
 
         with col1:
             if st.button("Activer ce projet", key=f"activate_{p['id']}"):
+                # Keep the selected project available on every workspace.
                 st.session_state["active_project"] = p
-                st.success(f"Projet **{p['name']}** activé.")
+                set_active_project_id(p["id"])
                 st.switch_page("pages/2_pipeline.py")
 
         with col2:
             if st.button("Voir TC", key=f"tc_{p['id']}"):
-                active_project = st.session_state.get("active_project")
-                if active_project and active_project.get("id") == p["id"]:
-                    st.switch_page("pages/5_tc_excel.py")
-                else:
-                    st.warning("Activez d’abord ce projet avec le bouton **Activer ce projet**.")
+                # "Voir TC" also activates the project represented by this row.
+                # This avoids requiring a separate activation click and guarantees
+                # that Workspace 05 receives the correct project context.
+                st.session_state["active_project"] = p
+                set_active_project_id(p["id"])
+                st.switch_page("pages/5_tc_excel.py")
 
         with col3:
             if st.button("Supprimer", key=f"delete_{p['id']}", type="secondary"):

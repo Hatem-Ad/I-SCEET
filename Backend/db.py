@@ -210,6 +210,52 @@ def _ensure_app_state_table(conn):
     )""")
 
 
+def _ensure_project_runtime_table(conn):
+    """Create the small runtime-settings table used to keep page context
+    coherent for a project (for example the Colab/ngrok URL)."""
+    conn.execute("""CREATE TABLE IF NOT EXISTS project_runtime (
+        project_id INTEGER NOT NULL,
+        key TEXT NOT NULL,
+        value TEXT,
+        updated_at TEXT DEFAULT (datetime('now')),
+        PRIMARY KEY (project_id, key),
+        FOREIGN KEY (project_id) REFERENCES projects(id)
+    )""")
+
+
+def set_project_runtime_value(project_id, key, value):
+    conn = get_connection()
+    _ensure_project_runtime_table(conn)
+    conn.execute(
+        "INSERT INTO project_runtime(project_id, key, value, updated_at) "
+        "VALUES(?, ?, ?, datetime('now')) "
+        "ON CONFLICT(project_id, key) DO UPDATE SET "
+        "value=excluded.value, updated_at=datetime('now')",
+        (int(project_id), str(key), "" if value is None else str(value)),
+    )
+    conn.commit()
+    conn.close()
+
+
+def get_project_runtime_value(project_id, key, default=None):
+    conn = get_connection()
+    _ensure_project_runtime_table(conn)
+    row = conn.execute(
+        "SELECT value FROM project_runtime WHERE project_id=? AND key=?",
+        (int(project_id), str(key)),
+    ).fetchone()
+    conn.close()
+    return row["value"] if row else default
+
+
+def clear_project_runtime(project_id):
+    conn = get_connection()
+    _ensure_project_runtime_table(conn)
+    conn.execute("DELETE FROM project_runtime WHERE project_id=?", (int(project_id),))
+    conn.commit()
+    conn.close()
+
+
 def set_active_project_id(project_id):
     conn = get_connection()
     _ensure_app_state_table(conn)
@@ -260,9 +306,15 @@ def update_project_status(project_id, status):
 
 def delete_project(project_id):
     conn = get_connection()
+    _ensure_app_state_table(conn)
+    _ensure_project_runtime_table(conn)
     c = conn.cursor()
-    for table in ["tc_remarks", "chat_history", "reviews", "artifacts"]:
+    for table in ["tc_remarks", "chat_history", "reviews", "artifacts", "project_runtime"]:
         c.execute(f"DELETE FROM {table} WHERE project_id=?", (project_id,))
+    c.execute(
+        "DELETE FROM app_state WHERE key='active_project_id' AND value=?",
+        (str(project_id),),
+    )
     c.execute("DELETE FROM projects WHERE id=?", (project_id,))
     conn.commit()
     conn.close()

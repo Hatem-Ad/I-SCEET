@@ -16,7 +16,12 @@ import sys, os, time, textwrap
 
 sys.path.append(os.path.join(os.path.dirname(__file__), "..", ".."))
 sys.path.append(os.path.join(os.path.dirname(__file__), ".."))
-from Backend.db import get_artifacts, update_project_status
+from Backend.db import (
+    get_artifacts,
+    update_project_status,
+    get_project_runtime_value,
+    set_project_runtime_value,
+)
 from orchestrator.pc_pipeline import PCPipeline
 from theme import inject_theme, page_header, module_rail, badge, LINE, TEXT_900
 
@@ -68,7 +73,13 @@ default_url = os.getenv("COLAB_URL", DEFAULT_COLAB_URL).strip() or DEFAULT_COLAB
 if default_url == LEGACY_COLAB_URL:
     default_url = DEFAULT_COLAB_URL
 
-stored_url = st.session_state.get("colab_url", default_url)
+project_url_key = f"colab_url_project_{active['id']}"
+persisted_url = get_project_runtime_value(active["id"], "colab_url", "")
+stored_url = (
+    st.session_state.get(project_url_key)
+    or persisted_url
+    or default_url
+)
 if stored_url == LEGACY_COLAB_URL:
     stored_url = DEFAULT_COLAB_URL
 
@@ -76,9 +87,16 @@ colab_url = st.text_input(
     "Colab URL (ngrok)",
     placeholder=DEFAULT_COLAB_URL,
     value=stored_url,
-)
+    key=f"colab_url_input_{active['id']}",
+).strip()
+
+# Keep the same endpoint available in Pipeline, Consultation and TC pages,
+# including after a browser refresh or a reverse-proxy reconnect.
 if colab_url:
-    st.session_state["colab_url"] = colab_url
+    st.session_state[project_url_key] = colab_url
+    st.session_state["colab_url"] = colab_url  # backward compatibility
+    if colab_url != persisted_url:
+        set_project_runtime_value(active["id"], "colab_url", colab_url)
 
 col1, col2 = st.columns([1, 3])
 with col1:
@@ -89,14 +107,14 @@ with col1:
                 status = pipeline.test_connection()
             if status.get("status") == "online":
                 st.markdown(badge(f"En ligne \u2014 GPU: {status.get('gpu_name', 'N/A')}", "success"), unsafe_allow_html=True)
-                st.session_state["colab_connected"] = True
+                st.session_state[f"colab_connected_{active['id']}"] = True
             else:
                 st.markdown(badge(f"Hors ligne \u2014 {status.get('error', 'Inconnu')}", "danger"), unsafe_allow_html=True)
-                st.session_state["colab_connected"] = False
+                st.session_state[f"colab_connected_{active['id']}"] = False
         else:
             st.error("Entrez d'abord l'URL ngrok.")
 with col2:
-    if st.session_state.get("colab_connected"):
+    if st.session_state.get(f"colab_connected_{active['id']}"):
         st.markdown(badge("Colab connect\u00e9 et pr\u00eat", "success"), unsafe_allow_html=True)
     else:
         st.markdown(badge("Colab non connect\u00e9 \u2014 testez la connexion d'abord", "neutral"), unsafe_allow_html=True)

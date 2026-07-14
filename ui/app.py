@@ -12,8 +12,8 @@ from theme import inject_theme, module_rail, metric_card, action_card
 st.set_page_config(page_title="I-SCEET", page_icon="✈️", layout="wide")
 inject_theme()
 
-# A fresh browser session starts without a selected project. Selection is made
-# explicitly from Workspace 06 — Historique.
+# The active project is resolved centrally by inject_theme(): session state is
+# refreshed first, then the last explicitly activated project is restored from SQLite.
 active = st.session_state.get("active_project")
 projects = get_all_projects()
 artifacts = get_artifacts(active["id"]) if active else []
@@ -36,11 +36,11 @@ st.markdown(
     textwrap.dedent(
         """
         <div class='isc-topbar'>
-          <div class='isc-topbar-left'><span class='isc-burger'>☰</span></div>
+
           <div class='isc-topbar-right'>
-            <span class='isc-topbar-plane'>✈</span>
-            <span class='isc-topbar-text'>Deploy</span>
-            <span class='isc-topbar-more'>⋮</span>
+
+
+
           </div>
         </div>
         """
