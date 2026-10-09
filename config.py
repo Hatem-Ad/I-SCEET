@@ -26,7 +26,7 @@ UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
 # ── COLAB CONNECTION ──────────────────────────────────────────────────────────
-# Paste your ngrok URL here OR set COLAB_URL in .env
+# Set COLAB_URL in .env (see .env.example) — never hard-code the endpoint here
 COLAB_URL = os.getenv("COLAB_URL", "")
 
 # ── SYSTEM PROMPTS ────────────────────────────────────────────────────────────

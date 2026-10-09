@@ -1,15 +1,14 @@
 #!/bin/bash
 # ================================================================================
-#  I-SCEET — Complete Launch Script
-#  Usage: bash start.sh
+#  I-SCEET — Launch Script
+#  Usage: bash start.sh            (VENV_DIR can be overridden from the env)
 # ================================================================================
 
 set -e
 
-REPO_DIR="/media/h/DATA/Github/I-SCEET"
-VENV_DIR="/home/h/i-sceet_env"
+REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+VENV_DIR="${VENV_DIR:-$REPO_DIR/.venv}"
 UI_DIR="$REPO_DIR/ui"
-DB_PATH="$REPO_DIR/isceet.db"
 LOG_FILE="$REPO_DIR/isceet.log"
 
 # ── COLORS ────────────────────────────────────────────────────────────────────
@@ -21,58 +20,41 @@ NC='\033[0m'
 
 echo -e "${BLUE}"
 echo "======================================"
-echo "   ✈️  I-SCEET Toolchain v1.0"
+echo "   I-SCEET Toolchain"
 echo "   Intelligent Safety-Critical"
 echo "   Engineering Environment Toolchain"
 echo "======================================"
 echo -e "${NC}"
 
-# ── STEP 1: Check repo ────────────────────────────────────────────────────────
-echo -e "${YELLOW}[1/5] Checking repository...${NC}"
-if [ ! -d "$REPO_DIR" ]; then
-    echo -e "${RED}❌ Repo not found at $REPO_DIR${NC}"
-    exit 1
+# ── STEP 1: Check configuration ───────────────────────────────────────────────
+echo -e "${YELLOW}[1/4] Checking configuration...${NC}"
+if [ ! -f "$REPO_DIR/.env" ] || ! grep -qE '^COLAB_URL=.+' "$REPO_DIR/.env"; then
+    echo -e "${RED}⚠️  COLAB_URL is not set in .env — copy .env.example to .env and set it.${NC}"
+    echo -e "${RED}   The UI will start, but the pipeline cannot reach the model server.${NC}"
+else
+    echo -e "${GREEN}✅ .env found with COLAB_URL${NC}"
 fi
-echo -e "${GREEN}✅ Repo found: $REPO_DIR${NC}"
 
-# ── STEP 2: Fix disk permissions (NTFS) ───────────────────────────────────────
-echo -e "${YELLOW}[2/5] Checking disk permissions...${NC}"
-if mount | grep "$(df $REPO_DIR | tail -1 | awk '{print $1}')" | grep -q "ro,"; then
-    echo -e "${YELLOW}⚠️  Disk is read-only. Attempting remount...${NC}"
-    DEVICE=$(df $REPO_DIR | tail -1 | awk '{print $1}')
-    sudo mount -o remount,rw "$DEVICE" 2>/dev/null || \
-    sudo ntfsfix "$DEVICE" 2>/dev/null && \
-    sudo mount -o remount,rw "$DEVICE" 2>/dev/null || \
-    echo -e "${YELLOW}⚠️  Could not remount — continuing anyway${NC}"
-fi
-echo -e "${GREEN}✅ Disk permissions OK${NC}"
-
-# ── STEP 3: Activate virtual environment ──────────────────────────────────────
-echo -e "${YELLOW}[3/5] Activating virtual environment...${NC}"
+# ── STEP 2: Activate virtual environment ──────────────────────────────────────
+echo -e "${YELLOW}[2/4] Activating virtual environment...${NC}"
 if [ ! -f "$VENV_DIR/bin/activate" ]; then
-    echo -e "${YELLOW}⚠️  Venv not found. Creating...${NC}"
+    echo -e "${YELLOW}⚠️  Venv not found. Creating $VENV_DIR ...${NC}"
     python3 -m venv "$VENV_DIR"
     source "$VENV_DIR/bin/activate"
-    pip install --quiet streamlit pandas openpyxl python-docx requests python-dotenv
+    pip install --quiet -r "$REPO_DIR/requirements.txt"
     echo -e "${GREEN}✅ Venv created and dependencies installed${NC}"
 else
     source "$VENV_DIR/bin/activate"
     echo -e "${GREEN}✅ Venv activated: $VENV_DIR${NC}"
 fi
 
-# ── STEP 4: Initialize SQLite database ────────────────────────────────────────
-echo -e "${YELLOW}[4/5] Initializing database...${NC}"
-python3 -c "
-import sys
-sys.path.insert(0, '$REPO_DIR')
-from Backend.db import init_db
-init_db()
-print('DB ready: $DB_PATH')
-"
+# ── STEP 3: Initialize SQLite database ────────────────────────────────────────
+echo -e "${YELLOW}[3/4] Initializing database...${NC}"
+(cd "$REPO_DIR" && python3 -c "from Backend.db import init_db; init_db(); print('DB ready')")
 echo -e "${GREEN}✅ SQLite database ready${NC}"
 
-# ── STEP 5: Launch Streamlit ──────────────────────────────────────────────────
-echo -e "${YELLOW}[5/5] Launching I-SCEET interface...${NC}"
+# ── STEP 4: Launch Streamlit ──────────────────────────────────────────────────
+echo -e "${YELLOW}[4/4] Launching I-SCEET interface...${NC}"
 echo ""
 echo -e "${GREEN}======================================"
 echo "   🚀 I-SCEET is starting..."
@@ -82,7 +64,7 @@ echo -e "${NC}"
 echo ""
 echo "📋 Quick start:"
 echo "   1. Go to '1 Upload' → create project + upload docs"
-echo "   2. Go to '2 Pipeline' → paste Colab URL → launch"
+echo "   2. Go to '2 Pipeline' → check the Colab connection → launch"
 echo "   3. Go to '3 Revue' → review generated artifacts"
 echo ""
 echo "Press Ctrl+C to stop"

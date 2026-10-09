@@ -67,25 +67,28 @@ st.markdown('<div class="isc-eyebrow">Connexion Colab</div>', unsafe_allow_html=
 
 from dotenv import load_dotenv
 load_dotenv()
-LEGACY_COLAB_URL = "https://your-domain.ngrok-free.app"
-DEFAULT_COLAB_URL = "https://your-domain.ngrok-free.app"
-default_url = os.getenv("COLAB_URL", DEFAULT_COLAB_URL).strip() or DEFAULT_COLAB_URL
-if default_url == LEGACY_COLAB_URL:
-    default_url = DEFAULT_COLAB_URL
+# The Colab endpoint is configured only through COLAB_URL in .env
+# (see .env.example) - no endpoint is hard-coded in the repository.
+env_url = os.getenv("COLAB_URL", "").strip()
 
 project_url_key = f"colab_url_project_{active['id']}"
 persisted_url = get_project_runtime_value(active["id"], "colab_url", "")
 stored_url = (
     st.session_state.get(project_url_key)
     or persisted_url
-    or default_url
+    or env_url
 )
-if stored_url == LEGACY_COLAB_URL:
-    stored_url = DEFAULT_COLAB_URL
+
+if not env_url:
+    st.error(
+        "COLAB_URL is not set. Copy `.env.example` to `.env`, set `COLAB_URL` "
+        "to the public URL of your Colab inference server (e.g. your ngrok "
+        "domain), then restart the app."
+    )
 
 colab_url = st.text_input(
     "Colab URL (ngrok)",
-    placeholder=DEFAULT_COLAB_URL,
+    placeholder="Set COLAB_URL in .env",
     value=stored_url,
     key=f"colab_url_input_{active['id']}",
 ).strip()
