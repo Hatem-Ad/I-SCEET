@@ -1,0 +1,69 @@
+PRODUCT DESIGN SPECIFICATION — stm32f303_boot_drv
+Example input for I-SCEET (written from scratch for demonstration purposes)
+Copyright (c) 2026 Hatem Adouani — MIT License
+
+1. PURPOSE
+This PDS describes a small, self-contained firmware product for an
+STM32F303VC microcontroller: a UART bootloader, the minimal driver layer it
+needs, and a placeholder application. It is a teaching example used to
+exercise the I-SCEET pipeline (PDS -> HLR -> LLR -> code -> tests ->
+traceability). It is not derived from any real aircraft program.
+
+2. ASSUMPTIONS
+- Target board: STM32F3DISCOVERY (STM32F303VCT6).
+- Design assurance level assumed for the exercise: DAL C.
+- No RTOS. Single-threaded super-loop plus interrupt handlers.
+- C99, MISRA-C:2012 guidelines applied where practical.
+
+3. PRODUCT ITEMS
+
+PDS-BOOT-001  Start-up decision
+  On every reset the bootloader shall decide, within 50 ms, whether to start
+  the application or to stay in update mode.
+
+PDS-BOOT-002  Forced update mode
+  The bootloader shall stay in update mode when the user button is held
+  during reset.
+
+PDS-BOOT-003  Application validity
+  The bootloader shall start the application only if the application image
+  header is present and the CRC-32 of the image matches the value stored in
+  the header.
+
+PDS-BOOT-004  Hand-over
+  Before jumping to the application, the bootloader shall de-initialise the
+  peripherals it used, relocate the vector table and load the application
+  stack pointer.
+
+PDS-CLK-001  System clock
+  The system clock shall run at 64 MHz from the internal 8 MHz HSI oscillator
+  through the PLL; if the PLL fails to lock within 10 ms the firmware shall
+  keep running on HSI and report the fault.
+
+PDS-UART-001  Update link
+  Firmware updates shall be received over USART1 at 115200 baud, 8N1, with
+  each frame protected by a CRC-16.
+
+PDS-UART-002  Protocol responses
+  Each received frame shall be answered with ACK or NACK within 100 ms.
+
+PDS-FLASH-001  Memory protection
+  The bootloader region shall never be erased or written by the update
+  process.
+
+PDS-FLASH-002  Write verification
+  Every programmed flash page shall be read back and compared with the
+  received data before ACK is sent.
+
+PDS-WDG-001  Watchdog
+  The independent watchdog shall be enabled with a timeout of 500 ms in both
+  bootloader and application.
+
+PDS-GPIO-001  Status indication
+  One LED shall indicate bootloader state: off = application running,
+  slow blink (1 Hz) = update mode idle, fast blink (5 Hz) = update in
+  progress, steady on = error.
+
+PDS-APP-001  Placeholder application
+  The application shall toggle a second LED at 2 Hz and refresh the
+  watchdog, demonstrating a successful hand-over.

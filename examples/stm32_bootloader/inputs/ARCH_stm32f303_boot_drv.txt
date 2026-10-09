@@ -1,0 +1,46 @@
+SYSTEM ARCHITECTURE — stm32f303_boot_drv
+Example input for I-SCEET (written from scratch for demonstration purposes)
+Copyright (c) 2026 Hatem Adouani — MIT License
+
+1. SOFTWARE ITEMS
+| Item        | Location in flash        | Role                                      |
+|-------------|--------------------------|-------------------------------------------|
+| Bootloader  | 0x0800_0000 - 0x0800_7FFF| start-up decision, update, hand-over      |
+| Application | 0x0800_8000 - end        | placeholder app (header + image)          |
+
+2. LAYERS (bootloader)
+  boot_main      start-up decision, update state machine, hand-over
+  boot_proto     frame parsing (SOF, length, command, payload, CRC-16), ACK/NACK
+  drv_clk        HSI -> PLL configuration, flash wait states, fallback to HSI
+  drv_flash      unlock/lock, page erase, half-word program, read-back verify,
+                 address guard that rejects any bootloader page
+  drv_uart       USART1 init, byte RX interrupt into a ring buffer, blocking TX
+  drv_gpio       button read, LED control
+  drv_crc        hardware CRC-32 over a memory range
+  drv_wdg        IWDG start and refresh
+  drv_tick       SysTick 1 ms time base, software timeouts
+
+  Dependencies go strictly downwards: boot_main -> boot_proto -> drv_*.
+  Drivers do not call each other except drv_tick (used for timeouts).
+
+3. START-UP SEQUENCE
+  1. Reset -> Reset_Handler -> SystemInit (HSI) -> main
+  2. drv_clk_init, drv_tick_init, drv_gpio_init, drv_wdg_start
+  3. If button pressed -> UPDATE mode
+  4. Else check header magic + CRC-32 of image
+       valid   -> de-init peripherals, set VTOR = 0x0800_8200,
+                  set MSP from vector[0], jump to vector[1]
+       invalid -> UPDATE mode
+
+4. UPDATE MODE STATE MACHINE
+  IDLE --START(size,crc)--> ERASING --done--> RECEIVING
+  RECEIVING --DATA(addr,payload)--> program + verify --> RECEIVING
+  RECEIVING --END--> VERIFY_IMAGE --ok--> write header --> reset
+                                   --ko--> ERROR
+  Any state --frame CRC error--> NACK, stay in state
+  Any state --no frame for 5 s--> IDLE
+
+5. INTERRUPTS
+  USART1_IRQn  RX byte into ring buffer (priority 1)
+  SysTick      1 ms tick (priority 2)
+  No other interrupt is enabled in the bootloader.

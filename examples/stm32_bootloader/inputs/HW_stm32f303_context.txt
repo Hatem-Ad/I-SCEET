@@ -1,0 +1,48 @@
+HARDWARE CONTEXT — STM32F303VC (STM32F3DISCOVERY)
+Example input for I-SCEET (written from scratch; values summarised from the
+public STMicroelectronics datasheet and reference manual — see README links)
+Copyright (c) 2026 Hatem Adouani — MIT License
+
+1. MICROCONTROLLER
+- Core: Arm Cortex-M4F, up to 72 MHz, single-precision FPU.
+- Flash: 256 KB at 0x0800_0000, 2 KB pages (128 pages).
+- SRAM: 40 KB at 0x2000_0000 + 8 KB CCM SRAM at 0x1000_0000.
+- Supply: 2.0 V to 3.6 V (board: 3.3 V).
+
+2. CLOCKS
+- HSI: internal RC, 8 MHz (default after reset).
+- PLL: input HSI/2 (4 MHz), multiplier x2..x16 -> 64 MHz maximum from HSI.
+  (72 MHz would require an 8 MHz HSE x 9; not used in this example.)
+- Flash latency: 2 wait states above 48 MHz.
+
+3. MEMORY MAP USED BY THE PRODUCT
+| Region            | Start        | Size   | Notes                       |
+|-------------------|--------------|--------|-----------------------------|
+| Bootloader        | 0x0800_0000  | 32 KB  | pages 0..15, never erased   |
+| Application header| 0x0800_8000  | 512 B  | magic, version, size, CRC32 |
+| Application image | 0x0800_8200  | ~223 KB| vector table at 0x0800_8200 |
+| SRAM              | 0x2000_0000  | 40 KB  | stack at top of SRAM        |
+
+Application header layout (little endian):
+  uint32 magic   = 0x31505041 (bytes "APP1" in memory)
+  uint32 version
+  uint32 size    (bytes of image after the header)
+  uint32 crc32   (CRC-32/MPEG-2, computed by the hardware CRC unit)
+  (header padded to 512 B so the vector table meets the VTOR alignment rule)
+
+4. PERIPHERALS
+| Function         | Peripheral | Pins            | Notes                        |
+|------------------|------------|-----------------|------------------------------|
+| Update link      | USART1     | PC4 TX, PC5 RX  | AF7                          |
+| User button      | GPIOA      | PA0             | active high, external pull-down |
+| Status LED       | GPIOE      | PE9             | push-pull output             |
+| Application LED  | GPIOE      | PE10            | push-pull output             |
+| Image check      | CRC        | -               | CRC-32 polynomial 0x04C11DB7 |
+| Watchdog         | IWDG       | -               | LSI ~40 kHz                  |
+| Time base        | SysTick    | -               | 1 ms tick                    |
+
+5. REFERENCES (public, not redistributed in this repository)
+- STM32F303xB/xC datasheet
+- RM0316 reference manual
+- PM0214 Cortex-M4 programming manual
+- AN2606 system memory boot mode
