@@ -2,6 +2,7 @@
 # ================================================================================
 #  I-SCEET — Launch Script
 #  Usage: bash start.sh            (VENV_DIR can be overridden from the env)
+#  Copyright (c) 2026 Hatem Adouani — MIT License
 # ================================================================================
 
 set -e

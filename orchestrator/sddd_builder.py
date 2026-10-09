@@ -2,6 +2,7 @@
 ================================================================================
  I-SCEET — SDDD Builder v1.0
  File: orchestrator/sddd_builder.py
+ Copyright (c) 2026 Hatem Adouani — MIT License
 ================================================================================
  Parses M2 LLM text output -> generates professional SDDD-0xx.docx
 

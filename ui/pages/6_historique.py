@@ -2,6 +2,7 @@
 ================================================================================
  I-SCEET — Page 6 : Historique des projets
  File: ui/pages/6_historique.py
+ Copyright (c) 2026 Hatem Adouani — MIT License
 ================================================================================
 """
 

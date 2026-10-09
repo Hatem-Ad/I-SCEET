@@ -2,6 +2,7 @@
 ================================================================================
  I-SCEET — Context Summarizer (content-preserving, not tag-only)
  File: orchestrator/context_summarizer.py
+ Copyright (c) 2026 Hatem Adouani — MIT License
 ================================================================================
  Unlike tag_extractor.py (pure ID correlation for M6, which only needs to
  know what links to what), M2 needs the actual substance of each HLR - its

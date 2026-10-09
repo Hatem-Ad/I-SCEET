@@ -1,3 +1,4 @@
+# Copyright (c) 2026 Hatem Adouani — MIT License
 import base64
 import html
 import os

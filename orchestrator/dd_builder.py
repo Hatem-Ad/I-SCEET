@@ -2,6 +2,7 @@
 ================================================================================
  I-SCEET — DD Builder v1.0
  File: orchestrator/dd_builder.py
+ Copyright (c) 2026 Hatem Adouani — MIT License
 ================================================================================
  Parses [VAR]/[CONST]/[TYPE] Data Dictionary tags from M2 raw text ->
  generates DD-xxx.xlsx (3 sheets: Variables, Constants, Types).

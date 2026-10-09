@@ -2,6 +2,7 @@
 ================================================================================
  I-SCEET — Page 1 : Upload documents + Nouveau projet
  File: ui/pages/1_upload.py
+ Copyright (c) 2026 Hatem Adouani — MIT License
 ================================================================================
  v2: each file is saved immediately on upload (no all-or-nothing batch
  button) so a project can be built up incrementally - upload just the HW

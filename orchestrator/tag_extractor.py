@@ -2,6 +2,7 @@
 ================================================================================
  I-SCEET — Tag Extractor for M6
  File: orchestrator/tag_extractor.py
+ Copyright (c) 2026 Hatem Adouani — MIT License
 ================================================================================
  Pre-processes M6's inputs deterministically: instead of feeding M6 the
  full raw text of SRD + SDDD + /src + SUTC + SVTC (which can exceed

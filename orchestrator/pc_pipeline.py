@@ -2,6 +2,7 @@
 ================================================================================
  I-SCEET — PC Pipeline Orchestrator v3.0
  File: orchestrator/pc_pipeline.py
+ Copyright (c) 2026 Hatem Adouani — MIT License
 ================================================================================
  Reads documents from SQLite → sends to Colab API → saves outputs to SQLite
  M1/M2 → .docx  |  M4/M5/M6 → .xlsx  |  versioning per module

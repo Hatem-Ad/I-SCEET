@@ -2,6 +2,7 @@
 ================================================================================
  I-SCEET — SUTC Builder v1.0
  File: orchestrator/sutc_builder.py
+ Copyright (c) 2026 Hatem Adouani — MIT License
 ================================================================================
  Parses M4 v3 raw text (5-sheet structure: A0/A1/A2 global, B0/B1 repeat
  per function) into SUTC-xxx.xlsx. Each function gets its own B0+B1 sheet

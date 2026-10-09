@@ -1,3 +1,4 @@
+# Copyright (c) 2026 Hatem Adouani — MIT License
 """I-SCEET — Homepage V8 aligned with the approved aerospace mockup."""
 
 import os

@@ -2,6 +2,7 @@
 ================================================================================
  I-SCEET — SRC Builder v1.1
  File: orchestrator/src_builder.py
+ Copyright (c) 2026 Hatem Adouani — MIT License
 ================================================================================
  Parses M3 raw text into a source-code ZIP. M3's actual deployed prompt
  (models/system_prompts/M3_system_prompt.txt — "v2.0 PROFESSIONAL") emits:

@@ -2,6 +2,7 @@
 ================================================================================
  I-SCEET — Central Configuration
  File: config.py
+ Copyright (c) 2026 Hatem Adouani — MIT License
 ================================================================================
  Edit this file to configure your I-SCEET installation.
  Never commit .env to GitHub — use .env.example as template.

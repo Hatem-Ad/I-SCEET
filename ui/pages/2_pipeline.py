@@ -2,6 +2,7 @@
 ================================================================================
  I-SCEET — Page 2 : Pipeline M1→M6
  File: ui/pages/2_pipeline.py
+ Copyright (c) 2026 Hatem Adouani — MIT License
 ================================================================================
  v2: fixed stale artifact names (SVCP-LLT/HLT-001 -> SUTC/SVTC, STD-001 ->
  TM), M2 now shown with its 3 outputs (SDDD/DD/CT), and progress_callback

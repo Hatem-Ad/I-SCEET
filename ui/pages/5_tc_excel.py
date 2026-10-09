@@ -2,6 +2,7 @@
 ================================================================================
  I-SCEET — Page 5 : TC Excel (Technical Comments)
  File: ui/pages/5_tc_excel.py
+ Copyright (c) 2026 Hatem Adouani — MIT License
 ================================================================================
  v3: added reviewer acronym field per remark, a delete button per remark,
  and switched the AI-resolution button from "one remark = one click" to

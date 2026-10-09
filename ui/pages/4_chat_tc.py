@@ -2,6 +2,7 @@
 ================================================================================
  I-SCEET — Workspace 04 : Consultation des artefacts
  File: ui/pages/4_chat_tc.py
+ Copyright (c) 2026 Hatem Adouani — MIT License
 ================================================================================
  Consultative-only chat over the generated engineering corpus.
  The page keeps the engineering baseline read-only and delegates answers to

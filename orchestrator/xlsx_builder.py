@@ -2,6 +2,7 @@
 ================================================================================
  I-SCEET — XLSX Builder
  File: orchestrator/xlsx_builder.py
+ Copyright (c) 2026 Hatem Adouani — MIT License
 ================================================================================
  Parses M4/M5/M6 LLM text output → generates Excel .xlsx files
  M4 → SUTC-0xx.xlsx  (Software Unit Test Cases)

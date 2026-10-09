@@ -2,6 +2,7 @@
 ================================================================================
  I-SCEET — Page 3 : Revue globale
  File: ui/pages/3_revue.py
+ Copyright (c) 2026 Hatem Adouani — MIT License
 ================================================================================
  v2: fixed a real bug - the old dict comprehension {a["module"]: a for a in
  artifacts} silently kept only the LAST artifact per module, so once M2

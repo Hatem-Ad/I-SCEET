@@ -2,6 +2,7 @@
 ================================================================================
  I-SCEET — CT Builder v1.0
  File: orchestrator/ct_builder.py
+ Copyright (c) 2026 Hatem Adouani — MIT License
 ================================================================================
  Derives CT-xxx.xlsx (2 sheets: Call Tree, Activation Scenario) from each
  function's "Called Functions" field — already reliably parsed by

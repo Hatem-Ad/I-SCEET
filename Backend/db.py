@@ -1,3 +1,4 @@
+# Copyright (c) 2026 Hatem Adouani — MIT License
 import sqlite3
 import os
 

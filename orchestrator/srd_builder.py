@@ -2,6 +2,7 @@
 ================================================================================
  I-SCEET — SRD Builder v2.1
  File: orchestrator/srd_builder.py
+ Copyright (c) 2026 Hatem Adouani — MIT License
 ================================================================================
  Parses M1 LLM text output -> generates professional SRD-0xx.docx
  (Sections I, II, III.1, III.2, IV)

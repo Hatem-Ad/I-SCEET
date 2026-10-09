@@ -2,6 +2,7 @@
 ================================================================================
  I-SCEET — TM Builder v1.0
  File: orchestrator/tm_builder.py
+ Copyright (c) 2026 Hatem Adouani — MIT License
 ================================================================================
  Parses M6 v2 raw text (Sections 1/2/3/3.5/4, multi-link aware) into
  TM-xxx.xlsx.
