@@ -1,11 +1,33 @@
+# Python
 __pycache__/
 *.pyc
-*.log
-*.env
-*.bin
-*.pt
 *.so
 *.o
+.venv/
+venv/
+
+# Secrets / local config
+.env
+*.env
+
+# Runtime data (never commit)
+*.db
+*.log
 outputs/
-docs.zip
+data/uploads/
 data/models/
+
+# Generated documents
+*.docx
+*.xlsx
+*.zip
+
+# Model weights / binaries
+*.bin
+*.pt
+
+# Editor / filesystem junk
+.fuse_hidden*
+.~lock.*#
+.DS_Store
+.ipynb_checkpoints/
