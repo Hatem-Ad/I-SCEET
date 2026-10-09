@@ -149,6 +149,17 @@ Upload the three files in step 3 of the Upload page, then run the pipeline.
   the models and hardware used.
 - The UI is partly in French.
 
+## Leak guard
+
+The `leak-guard` GitHub Actions workflow runs [gitleaks](https://github.com/gitleaks/gitleaks)
+with [`.gitleaks.toml`](.gitleaks.toml) on every push and pull request: it
+fails on secrets and on a list of forbidden internal names. To run the same
+check locally before each commit:
+
+```bash
+pip install pre-commit && pre-commit install
+```
+
 ## License
 
 [MIT](LICENSE) — Copyright (c) 2026 Hatem Adouani

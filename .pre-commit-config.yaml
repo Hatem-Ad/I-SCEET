@@ -1,0 +1,8 @@
+# Optional local guard: pip install pre-commit && pre-commit install
+# Runs gitleaks with .gitleaks.toml (secrets + forbidden internal names)
+# on the staged changes before every commit.
+repos:
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: v8.21.2
+    hooks:
+      - id: gitleaks

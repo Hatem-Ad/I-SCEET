@@ -1,0 +1,11 @@
+# Gitleaks configuration: default secret rules + project-specific guard.
+# Patterns use character classes so this file does not match itself.
+title = "I-SCEET gitleaks config"
+
+[extend]
+useDefault = true
+
+[[rules]]
+id = "forbidden-internal-terms"
+description = "Internal company / project names must never be committed"
+regex = '''(?i)(c[a]pgemini|e[s]prit|c[o]nfidential|i[c]ona5|i[c]on_a5|s[a]fran)'''
