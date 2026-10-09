@@ -22,6 +22,13 @@ Generates High-Level Test artifacts based on high-level requirements and system 
 ### Model6_Traceability.py
 Builds traceability links across requirements, code, and tests.
 
+## Current status
+
+The `Model*.py` files are empty placeholders. In the current implementation
+the models run on a separate GPU host (see the main README, *Model server*),
+and each module is defined by its system prompt in
+[`system_prompts/`](system_prompts/) (`M1_system_prompt.txt` … `M6_system_prompt.txt`).
+
 ## Goal
 
 These models represent the intelligent layer of I-SCEET.  
