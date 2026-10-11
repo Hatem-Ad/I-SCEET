@@ -91,8 +91,8 @@ server is not part of this repository; the UI expects it to expose:
 | `/progress` | GET | `{"module", "stage", "detail"}` for live UI updates |
 | `/chat` | POST | `{"module", "question", "artifacts"}` → answer about an artifact |
 
-`models/Model*.py` and `deterministic_core/*.py` are empty placeholders for
-now.
+See [Status / Roadmap](#status--roadmap) for what is implemented and what is
+not.
 
 ## Setup
 
@@ -108,8 +108,9 @@ cp .env.example .env
 ```
 
 `COLAB_URL` is required; the pipeline page shows an error if it is missing.
-Runtime data (`isceet.db`, `data/uploads/`, `outputs/`) is created locally and
-is git-ignored.
+`DB_PATH` is optional (absolute, or relative to the repo root; default
+`isceet.db` at the repo root). Runtime data (`isceet.db`, `data/uploads/`,
+`outputs/`) is created locally and is git-ignored.
 
 ## Run
 
@@ -148,6 +149,30 @@ Upload the three files in step 3 of the Upload page, then run the pipeline.
 - The model server is not included, and generation quality depends heavily on
   the models and hardware used.
 - The UI is partly in French.
+
+## Status / Roadmap
+
+I-SCEET is a work in progress. What exists today:
+
+| Part | Status |
+|---|---|
+| Streamlit UI (`ui/`) | Working: upload, pipeline, review, remarks (TC), history |
+| Orchestrator + document builders (`orchestrator/`) | Working: turns model text into `.docx` / `.xlsx` / `.zip` |
+| SQLite storage (`Backend/db.py`) | Working: projects, artifact versions, reviews, remarks |
+| System prompts M1–M6 (`models/system_prompts/`) | Written |
+| Model server (Colab + ngrok) | **Not in this repository.** Without a compatible server (see the endpoint table above), the pipeline cannot generate anything |
+| `models/Model1_HLR.py`, `Model2_LLR.py`, `Model3_CodeGen_AI.py`, `Model4_LLT.py`, `Model5_HLT.py`, `Model6_Traceability.py` | **Empty files.** Placeholders for running the modules locally; today all generation happens on the model server |
+| `deterministic_core/codegen.py`, `validator.py`, `test_runer.py`, `report_generator.py`, `ir_schema_json` | **Empty files.** Placeholders; no deterministic (non-AI) validation, test execution or reporting exists yet |
+| Automated tests for this repository | None yet |
+
+Possible next steps (no timeline, no commitment):
+
+- publish a minimal reference model server matching the endpoint table;
+- implement the deterministic checks (`deterministic_core/`): structure and
+  ID validation, traceability consistency, compile/test runs on generated code;
+- fill in or remove the `models/Model*.py` placeholders;
+- add tests for the builders and the database layer;
+- translate the remaining French UI text.
 
 ## Leak guard
 
