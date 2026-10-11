@@ -2,7 +2,14 @@
 import sqlite3
 import os
 
-DB_PATH = os.path.join(os.path.dirname(__file__), "..", "isceet.db")
+from dotenv import load_dotenv
+
+ROOT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+load_dotenv(os.path.join(ROOT_DIR, ".env"))
+
+# DB_PATH can be set in .env; a relative path is resolved against the repo root.
+DB_PATH = os.path.join(ROOT_DIR, os.path.expanduser(os.getenv("DB_PATH", "").strip() or "isceet.db"))
+os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
 
 # ── DOCUMENT NAMING CONVENTIONS ────────────────────────────────────────────────
 # Every artifact is identified by (family name, baseline_number, minor_number,

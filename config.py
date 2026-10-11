@@ -18,7 +18,7 @@ load_dotenv()
 
 # ── PATHS ─────────────────────────────────────────────────────────────────────
 ROOT_DIR    = Path(__file__).parent
-DB_PATH     = ROOT_DIR / "isceet.db"
+DB_PATH     = ROOT_DIR / Path(os.getenv("DB_PATH", "").strip() or "isceet.db").expanduser()  # relative -> repo root
 UPLOAD_DIR  = ROOT_DIR / "data" / "uploads"
 OUTPUT_DIR  = ROOT_DIR / "outputs"
 
