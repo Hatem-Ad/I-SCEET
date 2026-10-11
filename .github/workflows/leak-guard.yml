@@ -1,5 +1,5 @@
 # Fails the build if a secret or a forbidden internal name (see .gitleaks.toml)
-# appears in the files or in the commits being pushed.
+# appears in the files or anywhere in the git history.
 name: leak-guard
 
 on:
@@ -33,14 +33,7 @@ jobs:
       - name: Scan working tree
         run: gitleaks dir . --config .gitleaks.toml --redact --no-banner --exit-code 1
 
-      - name: Scan new commits
-        run: |
-          if [ "${{ github.event_name }}" = "pull_request" ]; then
-            RANGE="${{ github.event.pull_request.base.sha }}..${{ github.event.pull_request.head.sha }}"
-          elif [ "${{ github.event_name }}" = "push" ] && [ "${{ github.event.before }}" != "0000000000000000000000000000000000000000" ]; then
-            RANGE="${{ github.event.before }}..${{ github.sha }}"
-          else
-            RANGE="HEAD~1..HEAD"
-          fi
-          echo "Scanning $RANGE"
-          gitleaks git . --config .gitleaks.toml --redact --no-banner --exit-code 1 --log-opts="$RANGE"
+      - name: Scan full history
+        # Every commit on every ref, not only the pushed range: the history was
+        # rewritten once and must stay clean end to end.
+        run: gitleaks git . --config .gitleaks.toml --redact --no-banner --exit-code 1 --log-opts="--all"
