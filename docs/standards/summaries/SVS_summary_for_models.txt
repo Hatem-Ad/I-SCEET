@@ -1,0 +1,13 @@
+SVS SUMMARY FOR MODEL INPUTS — I-SCEET
+Source: Software Verification Standard (SVS), v1.0, BASELINE, 2026-07-03.
+Applies to: M4/SUTC low-level test generation and M5/SVTC high-level test generation.
+
+Purpose: SVS defines how low-level and high-level tests are written, identified, structured, and traced. M4 generates LLT/SUTC from LLRs. M5 generates HLT/SVTC from HLRs. Tests must be derived from requirements/design text, not from generated source code.
+
+Independence: M4 is independent of M3 and derives tests from SDDD/LLRs, especially the Causes/Effects and Implementation information. M5 is independent of M1 and derives functional tests from SRD/HLRs. M5 must not use LLR IDs, function names, or register-level implementation details unless present in HLR-approved context.
+
+SUTC rules: Unit test IDs follow SUTC_[SUBSYSTEM]_UFT[N]. A0 identifies function, author, date, and short description. A1 lists source documents: LLR IDs, SDS, and JUS references. The decision matrix maps LLR Causes/Effects branches to UTC IDs and marks T/F outcomes. Detailed test cases include preconditions, inputs, expected outputs, and pass/fail criteria. Every LLR in scope needs at least one UTC; every relevant branch needs evidence, including false cases when meaningful for MC/DC.
+
+SVTC rules: Functional test IDs follow SVTC_[SUBSYSTEM]_FT[N]. A0 identifies capability, author, date, and short description. A1 lists source documents: HLR IDs, PDS item, and hardware references. The functional matrix maps HLR scenarios to FT IDs and marks T/F outcomes. Detailed tests include concrete preconditions, inputs, expected outputs, and pass/fail criteria. Every HLR in scope needs at least one FT.
+
+Current I-SCEET prompt policy: when configuring builders/prompts, use the project-approved sheets A0, A1, A2, B0, and B1 if this supersedes the older A0/A1/B1/B2 wording in the source document.

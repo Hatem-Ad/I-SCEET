@@ -1,0 +1,13 @@
+SQAP SUMMARY FOR MODEL INPUTS — I-SCEET
+Source: Software Quality Assurance Plan (SQAP), v2.0, BASELINE, 2026-07-03.
+Applies to: QA audits, conformity checks, and non-conformity handling.
+
+Purpose: SQAP defines how Software Quality Assurance independently verifies that I-SCEET planning, standards, prompts, model configurations, and generated artifacts comply with DO-178C, project plans, and project standards.
+
+QA focus: SOI #1 audits planning and standards. SOI #2 audits SRD, SDDD, and source code. SOI #3 audits SUTC, SVTC, TM, and verification records. SOI #4 audits final lifecycle data and SAS.
+
+Conformity criteria: Generated artifacts must follow mandatory structure, populate all mandatory fields, avoid TBD/TBC and forbidden language, reference valid upstream IDs, use the correct approved model/prompt, preserve M4/M5 independence, and be stored under configuration management. Human review must be recorded before downstream use.
+
+Non-conformities: Any deviation becomes a Software Quality Record (SQR), classified as Critical, Major, or Minor. Critical/Major issues block SOI gate closure. Examples include broken traceability, missing mandatory fields, wrong prompt/model, unreviewed artifacts, or independence violations.
+
+Model relevance: Outputs should be audit-friendly: explicit IDs, status DRAFT unless approved, clear traceability, no hidden assumptions, no unverified READY status when gaps exist.

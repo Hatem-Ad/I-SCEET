@@ -1,0 +1,15 @@
+SCS SUMMARY FOR MODEL INPUTS — I-SCEET
+Source: Software Code Standards (SCS), v2.0, BASELINE, 2026-07-03.
+Applies to: M3 source code generation and /src output.
+
+Purpose: SCS defines coding conventions, file organization, headers, comments, MISRA-C expectations, forbidden constructs, and review criteria for generated C99 source code.
+
+Output structure: M3 output is a controlled /src folder. Source files use lowercase_snake_case.c, headers use lowercase_snake_case.h, module folders use lowercase_snake_case/, and shared types use isceet_types.h. Each public module shall have a header with include guards and prototypes. Each C/H file must include a mandatory file header with @file, @brief, @implements, and @traces information. Public functions require function headers with @req referencing LLR IDs.
+
+Naming: Functions follow [module]_[action/object] conventions such as flash_driver_init, uart_driver_set_baudrate, boot_manager_process. Static internal functions use static verb_object. Local variables are lowercase_snake_case, static module variables use s_, volatile ISR flags use g_[module]_[flag]_flag, constants/macros use UPPER_SNAKE_CASE, enum values use ISCEET_UPPER_SNAKE_CASE, typedef structs use PascalCase_t.
+
+MISRA/security constraints: Code shall follow C99 and MISRA-C:2012. Mandatory/required rules need full compliance unless a formal deviation is documented. Use fixed-width integer types. Avoid implicit conversions and pointer/integer casts. Check return values. Avoid unreachable/dead code.
+
+Forbidden constructs: no malloc/calloc/free, recursion, goto, setjmp/longjmp, printf/scanf, variable-length arrays, uncontrolled infinite loops, magic numbers, multiple assignments in one line, unchecked return values, or ambiguous implicit conversions. Use static allocation, bounded loops with timeouts, explicit return codes, and UART driver functions instead of stdio.
+
+Review focus: trace every function/file to LLRs, verify naming, headers, comments, include guards, source structure, no forbidden constructs, and no implementation that lacks an LLR trace.

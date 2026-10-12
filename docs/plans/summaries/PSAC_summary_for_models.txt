@@ -1,0 +1,11 @@
+PSAC SUMMARY FOR MODEL INPUTS — I-SCEET
+Source: Plan for Software Aspects of Certification (PSAC), v4.0, BASELINE, 2026-07-03.
+Applies to: overall certification planning for M1→M6.
+
+Purpose: PSAC is the master certification planning document for I-SCEET. It defines the DO-178C lifecycle approach, the assumed DAL A demonstration context, the software lifecycle data set, and the role of each AI module. It must be used as lifecycle context only; it is not a source of detailed HLR/LLR/code/test requirements.
+
+Lifecycle: I-SCEET follows a sequential DO-178C / V-model flow. Planning and standards are completed before SOI #1. M1 generates SRD/HLRs from PDS + HW + ARCH. M2 generates SDDD/LLRs from SRD. M3 generates source code from SDDD. M4 generates low-level tests from LLRs. M5 generates high-level tests from HLRs. M6 generates full bidirectional traceability across PDS→HLR→LLR→Code→SUTC/SVTC.
+
+Key architectural decisions: SRD contains system architecture context plus HLRs. SDDD contains software architecture plus LLRs. M3 source output must be structured and traceable. M4 reads only SDDD/LLRs. M5 reads only SRD/HLRs. AI outputs are not accepted as lifecycle data until independently reviewed.
+
+Certification assumptions: DAL A is assumed for demonstration because incorrect or incomplete generated lifecycle artifacts may propagate safety-critical errors. Derived requirements must be identified, justified, traceable, and submitted to the safety process. AI-generated outputs have known limitations and require human review, configuration management, and independent verification.

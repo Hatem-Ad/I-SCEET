@@ -1,0 +1,13 @@
+SCMP SUMMARY FOR MODEL INPUTS — I-SCEET
+Source: Software Configuration Management Plan (SCMP), v3.0, BASELINE, 2026-07-03.
+Applies to: versioning, baselines, configuration control, and reproducibility.
+
+Purpose: SCMP defines how all I-SCEET software configuration items are identified, versioned, baselined, changed, archived, and traced. Use it to guide artifact identity, versioning, reproducibility, and change impact behavior.
+
+Configuration items: Planning/standards include PSAC, SDP, SVP, SCMP, SQAP, SRS, SDS, SCS. Development artifacts include SRD, SDDD, and /src. Verification artifacts include SUTC, SVTC, SVTR, TM, SAS. AI module configurations are also configuration items: model name/version, prompt file/version, temperature, seed, max_tokens, input document versions, and output artifact version.
+
+Versioning: Documents use X.Y-DRAFT during generation/review, X.Y for reviewed versions, and baseline tags for controlled baselines. Outputs must not overwrite previous artifacts. Each generation must be uniquely linked to the input set and model configuration used.
+
+Change control: Any change to source documents, prompts, models, parameters, or generated artifacts may trigger re-generation and re-review of impacted downstream artifacts. Regeneration must preserve traceability and include corrective input from technical comments or problem reports.
+
+Model relevance: Always output stable IDs and traceability fields. Never silently renumber or reuse IDs. Preserve reproducibility metadata whenever possible.

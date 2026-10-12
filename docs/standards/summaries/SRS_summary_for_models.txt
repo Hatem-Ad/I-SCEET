@@ -1,0 +1,15 @@
+SRS SUMMARY FOR MODEL INPUTS — I-SCEET
+Source: Software Requirements Standards (SRS), v2.0, BASELINE, 2026-07-03.
+Applies to: M1/SRD/HLR and M2/SDDD/LLR generation.
+
+Purpose: SRS defines mandatory requirement identification, structure, language, traceability, derived requirement handling, and review criteria. M1 and M2 must obey SRS over any general model assumption.
+
+IDs and subsystem codes: HLR format is HLR-[SUBSYSTEM]-[NNN]. LLR format is LLR-[SUBSYSTEM]-[NNN]-[XX]. Derived requirements use a -D suffix according to the project convention and must also be marked Derived in the traceability field. Standard subsystem codes include BOOT, FLASH, UART, CLK, GPIO, CRC, TICK, WDG, APP, and SYS.
+
+HLR rules for M1: Each HLR shall include ID, PDS coverage tag/parent, capability title, activation period when applicable, Input/Output/Local Data, requirement statement, upwards traceability, category, context, verification method, safety effect, security assurance level when applicable, and rationale. HLR statements must describe WHAT, not HOW. They must not contain implementation details such as function names, register names, or variable names.
+
+LLR rules for M2: LLRs are structured inside functions. Function-level fields include exact C prototype, parameter table, preconditions, called functions, and IN/OUT/INOUT data. Requirement-level fields include LLR ID, COV.HLR tag when applicable, JUS reference when Extended/Derived, capability title, Causes/Effects table, Implementation block, Traceability = Refined/Extended/Derived, Mean-of-Verification, Rationale, and END_REQ. Causes/Effects must be pipe-table rows; Implementation must use bracketed labels matching the Causes/Effects labels.
+
+Language rules: Requirement statements use “The software shall ...”. Avoid will, must, should, can, may for mandatory DAL A behavior. Avoid usually, generally, normally, fast, quickly, soon, good, sufficient, adequate, as much as possible, and/or, etc., TBD, TBC, TODO, passive or ambiguous language, and multiple shall statements in one requirement.
+
+Quality and traceability: Requirements must be accurate, consistent, verifiable, traceable, unambiguous, complete, and feasible. Traceability chain is PDS→HLR→LLR→Code→LLT/HLT. Derived requirements must be justified and traceable to hardware, safety, architecture, timing, or design constraints.

@@ -1,0 +1,13 @@
+SVP SUMMARY FOR MODEL INPUTS — I-SCEET
+Source: Software Verification Plan (SVP), v3.0, BASELINE, 2026-07-03.
+Applies to: verification process for all M1→M6 outputs.
+
+Purpose: SVP defines how AI-generated lifecycle artifacts are verified against DO-178C objectives before downstream use. It is process context for model prompts and a source of review/verification expectations.
+
+Verification approach: Every artifact follows generate-then-verify. Reviews and analyses verify accuracy, completeness, consistency, verifiability, traceability, and standards compliance. No generated artifact is accepted without independent review and closure of action items.
+
+Module verification: M1/SRD is checked for HLR format, PDS coverage, no ambiguity, derived requirement justification, architecture consistency, and valid traceability. M2/SDDD is checked for HLR-to-LLR completeness, design accuracy, architecture consistency, and complexity limits. M3/source is checked by code review and static analysis. M4/SUTC and M5/SVTC are checked for test adequacy, traceability, and coverage. M6/TM is checked for bidirectional trace completeness and orphan/gap detection.
+
+Independence: Verification must be independent from generation. M4 is independent of M3. M5 is independent of M1. Verification outputs shall not rely on generated code when tests are meant to be derived from requirements/design.
+
+DAL A coverage context: Structural coverage includes statement, decision, and MC/DC objectives where applicable. Coverage gaps require analysis, problem reports, and re-verification.

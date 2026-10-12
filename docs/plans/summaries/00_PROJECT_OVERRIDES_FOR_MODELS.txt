@@ -1,0 +1,12 @@
+I-SCEET CURRENT PROMPT OVERRIDES — USE WITH THE SUMMARIES
+These rules reflect the current project decisions and shall override older wording in planning/standard summaries when a conflict exists.
+
+M1: Keep HLR count minimal for Qwen3-32B. Each real PDS item shall be covered by exactly 2 HLRs by default. A third HLR is allowed only when technically necessary to separate a distinct safety, interface, performance, or resource concern. No PDS item shall exceed 3 HLRs unless the engineer explicitly requests it. PDS coverage shall be 100%. Derived HLRs shall remain <=25% of total HLRs.
+
+M2: Each HLR shall be covered by 2 to 6 LLRs, SRD/HLR coverage shall be 100%, and Derived LLRs shall remain <=25%. Causes/Effects must use writing blocks such as [The clock source is High-Speed Internal]. Technical logic goes in Implementation, not in Causes/Effects.
+
+M3: Generate one .c file per LLR and one .h file per component. Cover 100% of LLRs and Derived LLRs. Package source output as SRC_vX.Y.zip, not a single src.txt.
+
+M4/M5: Test workbooks shall follow A0, A1, A2, B0, B1. M4 derives SUTC from LLRs. M5 derives SVTC from HLRs.
+
+M6: Recalculate the complete chain PDS->HLR->LLR->Code->UTC/FT. Never report READY if any traceability gap exists.

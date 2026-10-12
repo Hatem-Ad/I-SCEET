@@ -1,0 +1,13 @@
+SDP SUMMARY FOR MODEL INPUTS — I-SCEET
+Source: Software Development Plan (SDP), v4.0, BASELINE, 2026-07-03.
+Applies to: development process for M1, M2, M3 and downstream development data.
+
+Purpose: SDP defines how I-SCEET development activities are planned, executed, reviewed, and controlled according to DO-178C. It gives process context, not detailed technical requirements. Use it to understand lifecycle order, review gates, development environment, and tool constraints.
+
+Development process: The project follows a generate-then-review model. Each AI module produces an artifact, then an independent human review checks compliance with the applicable standard. No artifact may be used downstream until the review is passed and action items are closed. M1 generates HLRs/SRD, M2 derives architecture/LLRs/SDDD, M3 generates source code, M4/M5 generate tests, and M6 builds traceability.
+
+Environment: Development uses a controlled host environment, Python/FastAPI/Streamlit/SQLite orchestration, local GGUF models on Colab, and generated C/assembly for the STM32F303 target. Prompts, model versions, generation parameters, and input artifact versions are configuration-controlled.
+
+Standards relationship: M1/M2 must follow SRS, M2 must also follow SDS, and M3 must follow SCS. Changes to prompts, models, source documents, or generation parameters may require re-review of affected artifacts.
+
+Important rule for models: AI-generated development artifacts are draft lifecycle data until reviewed. Derived requirements introduced during generation must be explicitly marked, justified, and traceable to safety, hardware, architecture, or design constraints.
