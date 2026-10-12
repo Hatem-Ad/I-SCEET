@@ -70,7 +70,6 @@ I-SCEET/
 │   └── tag_extractor.py, context_summarizer.py
 ├── models/
 │   └── system_prompts/  One system prompt per module (M1..M6)
-├── deterministic_core/  Placeholder for non-AI checks (validation, report generation)
 ├── Backend/db.py        SQLite storage: projects, artifacts, versions, reviews, remarks
 ├── notebooks/           Colab experiment for M1
 ├── examples/            Self-made STM32F303 bootloader example inputs
@@ -161,16 +160,16 @@ I-SCEET is a work in progress. What exists today:
 | SQLite storage (`Backend/db.py`) | Working: projects, artifact versions, reviews, remarks |
 | System prompts M1–M6 (`models/system_prompts/`) | Written |
 | Model server (Colab + ngrok) | **Not in this repository.** Without a compatible server (see the endpoint table above), the pipeline cannot generate anything |
-| `models/Model1_HLR.py`, `Model2_LLR.py`, `Model3_CodeGen_AI.py`, `Model4_LLT.py`, `Model5_HLT.py`, `Model6_Traceability.py` | **Empty files.** Placeholders for running the modules locally; today all generation happens on the model server |
-| `deterministic_core/codegen.py`, `validator.py`, `test_runer.py`, `report_generator.py`, `ir_schema_json` | **Empty files.** Placeholders; no deterministic (non-AI) validation, test execution or reporting exists yet |
+| Local model runners (M1–M6) | **Planned.** Today all generation happens on the model server |
+| Deterministic (non-AI) checks: validation, test execution, reporting | **Planned.** Not implemented yet |
 | Automated tests for this repository | None yet |
 
 Possible next steps (no timeline, no commitment):
 
 - publish a minimal reference model server matching the endpoint table;
-- implement the deterministic checks (`deterministic_core/`): structure and
+- implement the deterministic checks: structure and
   ID validation, traceability consistency, compile/test runs on generated code;
-- fill in or remove the `models/Model*.py` placeholders;
+- run the M1–M6 modules locally, without the remote model server;
 - add tests for the builders and the database layer;
 - translate the remaining French UI text.
 

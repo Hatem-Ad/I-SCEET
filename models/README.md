@@ -1,33 +1,23 @@
 # Models
 
-This folder contains the main generation models used by I-SCEET.
+This folder contains the system prompts of the I-SCEET generation modules.
 
-## Available Models
+## Modules
 
-### Model1_HLR.py
-Generates High-Level Requirements (HLR) from engineering inputs such as PDS, hardware context, and system architecture.
+Each module is defined by its system prompt in
+[`system_prompts/`](system_prompts/) and runs on a separate GPU host
+(see the main README, *Model server*).
 
-### Model2_LLR.py
-Transforms HLR into Low-Level Requirements (LLR) and prepares a more detailed software-oriented decomposition.
+| Module | Prompt | Role |
+|---|---|---|
+| M1 | `M1_system_prompt.txt` | High-Level Requirements (HLR) from PDS, hardware context and system architecture |
+| M2 | `M2_system_prompt.txt` | Low-Level Requirements (LLR) and software design from HLR |
+| M3 | `M3_system_prompt.txt` | Source code proposals from LLR and design |
+| M4 | `M4_system_prompt.txt` | Low-Level Tests from code and LLR |
+| M5 | `M5_system_prompt.txt` | High-Level Tests from HLR and system behaviour |
+| M6 | `M6_system_prompt.txt` | Traceability links across requirements, code and tests |
 
-### Model3_CodeGen_AI.py
-Generates source code proposals from LLR and design logic.
-
-### Model4_LLT.py
-Generates Low-Level Test artifacts based on code and low-level requirements.
-
-### Model5_HLT.py
-Generates High-Level Test artifacts based on high-level requirements and system behavior.
-
-### Model6_Traceability.py
-Builds traceability links across requirements, code, and tests.
-
-## Current status
-
-The `Model*.py` files are empty placeholders. In the current implementation
-the models run on a separate GPU host (see the main README, *Model server*),
-and each module is defined by its system prompt in
-[`system_prompts/`](system_prompts/) (`M1_system_prompt.txt` … `M6_system_prompt.txt`).
+Running these modules locally (without the model server) is planned work.
 
 ## Goal
 
