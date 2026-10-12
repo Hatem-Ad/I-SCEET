@@ -4,7 +4,7 @@ A small, self-made case study used to exercise the whole I-SCEET pipeline:
 a UART bootloader, its driver layer and a placeholder application for the
 STM32F303VC on an STM32F3DISCOVERY board.
 
-All files here were written from scratch for this repository. They are
+All input files here were written from scratch for this repository. They are
 intentionally short (12 PDS items) so a full M1→M6 run stays fast.
 
 ## Inputs
@@ -26,6 +26,13 @@ intentionally short (12 PDS items) so a full M1→M6 run stays fast.
    **Revue** page. Expect each PDS item to be covered by 2–6 HLRs.
 
 Generated files land in `outputs/stm32f303_boot_drv/` (git-ignored).
+
+## Example output
+
+[`run-2026-07-11/`](run-2026-07-11/) contains raw pipeline output for this
+case study (SRD, SDDD, data dictionary, constants, test and traceability
+workbooks). It is unreviewed model output, kept to show what the pipeline
+produces; see its README for its limits.
 
 ## Hardware references
 

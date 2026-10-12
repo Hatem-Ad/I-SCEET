@@ -21,6 +21,9 @@ data/models/
 *.docx
 *.xlsx
 *.zip
+# ...except the committed example run outputs
+!examples/**/*.docx
+!examples/**/*.xlsx
 
 # Model weights / binaries
 *.bin

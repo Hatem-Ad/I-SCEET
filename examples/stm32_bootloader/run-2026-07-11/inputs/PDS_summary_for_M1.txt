@@ -1,0 +1,78 @@
+I-SCEET — PDS SUMMARY FOR M1
+Source: PDS_STM32F303_I-SCEET.docx
+Document: Product Design Specification, PDS v3.1 / DRAFT, STM32F303 Bootloader + Drivers + Minimal Application
+Purpose: compact M1 input. This file preserves all current PDS requirement IDs and their technical constraints. It replaces the full PDS for M1 context minimization.
+
+M1 RULES FROM THIS PDS
+- Current PDS baseline contains 20 consolidated PDS items, reduced from 63 granular items.
+- M1 shall cover every PDS item 100%.
+- For Qwen3-32B runs, each PDS item should generate exactly 2 HLRs by default; a 3rd HLR is allowed only for a distinct safety, interface, performance, or resource aspect.
+- Derived HLRs remain <= 25% of total HLR count.
+
+PROJECT CONTEXT
+The target software is a DAL A demonstration bootloader, driver layer, and minimal LED application for STM32F303VCT6. The system validates the I-SCEET M1→M6 toolchain by generating DO-178C lifecycle artifacts for a safety-critical embedded foundation layer. The software is bare-metal, C99 for application/driver logic, with ARM assembly startup/vector table.
+
+TARGET HARDWARE
+- MCU: STM32F303VCT6, ARM Cortex-M4F with FPU.
+- Clock target: 72 MHz using HSE 8 MHz + PLL x9.
+- Flash: 256 KB, 0x08000000–0x0803FFFF.
+- RAM: 40 KB, 0x20000000–0x20009FFF.
+
+AUTHORITATIVE MEMORY MAP
+- Vector Table: 0x08000000–0x080001FF, 512 B, Cortex-M4 IRQ vectors.
+- Bootloader Code: 0x08000200–0x08007FF7, about 31 KB, boot_manager + all drivers.
+- Firmware Metadata: 0x08007FF8–0x08007FFF, 8 B, app size 4 B + CRC-32 4 B.
+- Application Code: 0x08008000–0x0803FFFF, 224 KB, minimal LED blink application.
+- RAM Stack: 0x20000000–0x20001FFF, 8 KB, bootloader stack.
+- RAM Driver Buffers: 0x20002000–0x20003FFF, 8 KB, UART buffer/static variables.
+- RAM Application: 0x20004000–0x20009FFF, 24 KB, application stack/data.
+
+PDS REQUIREMENTS — 20 ITEMS
+
+BOOTLOADER
+PDS-BOOT-001: The bootloader shall initialize required hardware in order RCC -> SysTick -> GPIO -> UART -> Flash -> CRC -> WDG and send a UART startup banner within 100 ms after UART initialization. Verification: Test.
+PDS-BOOT-002: The bootloader shall verify application CRC-32 before execution; it shall jump to 0x08008000 only if CRC verification succeeds; otherwise it shall enter a safe error state and send a UART diagnostic. Full init + verify + jump shall complete within 500 ms after power-on reset. Verification: Test.
+PDS-BOOT-003: The bootloader shall support firmware update through UART by receiving a new binary and writing it into the application flash region. Verification: Test.
+
+CLOCK / RCC
+PDS-CLK-001: The RCC driver shall configure 72 MHz system clock using HSE 8 MHz + PLL x9, with AHB /1, APB1 /2 maximum 36 MHz, APB2 /1, within 10 ms of invocation. Verification: Test.
+PDS-CLK-002: The RCC driver shall enable clocks for GPIOA, USART1, CRC, FLASH, and IWDG. Verification: Review.
+
+FLASH
+PDS-FLASH-001: The flash driver shall erase any page in the application region 0x08008000–0x0803FFFF within 50 ms per page. Verification: Test.
+PDS-FLASH-002: The flash driver shall write half-words, 16-bit, to any address in the application region and verify each write by readback comparison. Verification: Test.
+PDS-FLASH-003: The flash driver shall read from any flash address 0x08000000–0x0803FFFF and return an error code if any flash operation fails or times out. Verification: Test.
+
+UART
+PDS-UART-001: The UART driver shall configure USART1 at 115200 baud 8N1 and transmit null-terminated strings up to 256 characters; 256-byte transmission shall complete within 30 ms. Verification: Test.
+PDS-UART-002: The UART driver shall support interrupt-driven reception of binary packets up to 1 KB and detect/report frame, parity, and overrun errors. Verification: Test.
+
+GPIO
+PDS-GPIO-001: The GPIO driver shall configure PA5 as push-pull 2 MHz output for LED set/reset/toggle operations, PA9 as USART1 TX alternate-function output, and PA10 as USART1 RX alternate-function input. Verification: Test.
+
+CRC
+PDS-CRC-001: The CRC module shall compute CRC-32 using polynomial 0x04C11DB7 over a memory range using the hardware CRC unit, reset before each computation; it shall complete 224 KB in less than 100 ms, with expected value stored at 0x08007FFC. Verification: Test.
+
+SYSTICK
+PDS-TICK-001: The SysTick driver shall generate a 1 ms interrupt at 72 MHz and provide HAL_GetTick()/HAL_Delay()-equivalent services; tick counter shall not overflow within 49 days of continuous operation. Verification: Test.
+
+WATCHDOG
+PDS-WDG-001: The watchdog driver shall configure IWDG with 1 s timeout from LSI during bootloader initialization, provide refresh service, refresh at least every 500 ms, and never stop IWDG once started. Verification: Test.
+PDS-WDG-002: If IWDG expires due to system hang, the MCU shall perform automatic system reset. Verification: Test.
+
+APPLICATION
+PDS-APP-001: The application shall toggle LED on PA5 at 1 Hz, 500 ms ON/OFF, using SysTick and shall run indefinitely under normal conditions as visual validation that M1–M6 produced working code. Verification: Test.
+PDS-APP-002: The application shall send 'I-SCEET APP RUNNING' once at startup through UART and refresh IWDG every 500 ms. Verification: Test.
+
+SAFETY / CROSS-CUTTING SYS
+PDS-SYS-001: The software shall detect application firmware corruption before execution using CRC-32 and shall never execute corrupted or unverified application code. Verification: Test.
+PDS-SYS-002: The software shall not use dynamic memory allocation or recursion in bootloader or drivers and shall handle all peripheral initialization failures gracefully with no undefined behavior. Verification: Static Analysis.
+PDS-SYS-003: All M3-generated software shall comply with MISRA-C:2012 Mandatory/Required rules and achieve full MC/DC structural coverage on all bootloader and driver source files for DAL A. Verification: Static Analysis / Coverage.
+
+DESIGN CONSTRAINTS TO PRESERVE
+- C99 for application/driver logic; startup/vector table in ARM assembly.
+- No C++, no RTOS, no dynamic allocation, no recursion, no stdio printf/scanf.
+- Bootloader Flash <= 32 KB; bootloader RAM <= 8 KB.
+- Generated code compiles clean with -Wall -Wextra.
+- IWDG starts before CRC verification and is never stopped.
+- Application entry uses vector at 0x08008004, with application region starting 0x08008000.

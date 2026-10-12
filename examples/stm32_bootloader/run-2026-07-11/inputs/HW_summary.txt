@@ -1,0 +1,182 @@
+================================================================================
+HW — STM32F303VCT6 HARDWARE SUMMARY FOR I-SCEET
+Condensed from: stm32f303vc.pdf (datasheet), RM0316/dm00043574.pdf
+(reference manual), PM0214/dm00046982.pdf (Cortex-M4 programming manual),
+AN2606/cd00167594.pdf (system boot mode).
+Purpose: single compact HW input for M1 - every value below is traceable
+to the named source document and section.
+================================================================================
+
+1. DEVICE OVERVIEW (datasheet + RM0316 ch3)
+--------------------------------------------------------------------------------
+- MCU: STM32F303VCT6, ARM Cortex-M4F core with FPU and MPU, LQFP100.
+- Max SYSCLK: 72 MHz. Flash: 256 KB. SRAM: 40 KB (+ 8 KB CCM-SRAM).
+- Supply: 2.0-3.6 V. Temperature: -40 to +85 C (industrial).
+- Flash base: 0x08000000 (256 KB -> 0x0803FFFF).
+- SRAM base:  0x20000000 (40 KB  -> 0x20009FFF).
+- CCM-SRAM:   0x10000000 (8 KB, core-coupled, no DMA access).
+- System memory (ST bootloader ROM): 0x1FFFD800, 8 KB (AN2606).
+- Peripheral base: 0x40000000 (APB1), 0x40010000 (APB2), 0x48000000 (AHB2 GPIO).
+
+2. BOOT CONFIGURATION (RM0316 ch3.5 + AN2606 §23)
+--------------------------------------------------------------------------------
+- BOOT0 pin + nBOOT1 option bit select the boot area at reset:
+  BOOT0=0            -> boot from Main Flash (0x08000000) [project default]
+  BOOT0=1, nBOOT1=1  -> boot from System memory (ST ROM bootloader)
+  BOOT0=1, nBOOT1=0  -> boot from embedded SRAM (0x20000000)
+- After reset, the Cortex-M4 fetches:
+  word at 0x00000000 (aliased to boot area) -> initial MSP value
+  word at 0x00000004 -> Reset_Handler address (PC)
+  The hardware loads MSP automatically BEFORE the first instruction of
+  Reset_Handler executes (PM0214 §2.3).
+- ST ROM bootloader (AN2606, STM32F303xB/C pattern): activated via
+  USART1 (PA9/PA10), USART2 (PA2/PA3). Uses HSI. Not used by the
+  I-SCEET custom bootloader, but its presence at 0x1FFFD800 must not be
+  overwritten.
+- VTOR (Vector Table Offset Register, PM0214 §4.4.4): allows relocating
+  the vector table; the application at 0x08008000 must set VTOR =
+  0x08008000 before enabling interrupts.
+
+3. VECTOR TABLE / EXCEPTIONS (PM0214 §2.3, Figure 11)
+--------------------------------------------------------------------------------
+- Vector table layout: [0]=initial MSP, [1]=Reset, [2]=NMI, [3]=HardFault,
+  [4]=MemManage, [5]=BusFault, [6]=UsageFault, [11]=SVCall,
+  [14]=PendSV, [15]=SysTick, [16+]=peripheral IRQs.
+- Relevant peripheral IRQ numbers (position in vector table = 16 + IRQn):
+  USART1: IRQn 37. IWDG has NO interrupt (independent watchdog resets MCU).
+- Priority: NVIC_IPRx registers, 4 bits of priority per interrupt
+  (16 levels, 0 = highest).
+- Exception entry: 8 registers auto-stacked (R0-R3, R12, LR, PC, xPSR).
+
+4. RCC — RESET AND CLOCK CONTROL (RM0316 ch9, base 0x40021000)
+--------------------------------------------------------------------------------
+- Clock sources: HSI 8 MHz RC (default after reset), HSE 4-32 MHz crystal
+  (8 MHz on target board), PLL, LSI ~40 kHz (IWDG), LSE 32.768 kHz.
+- 72 MHz recipe (the project's target):
+  1. Enable HSE: RCC_CR.HSEON=1, wait HSERDY.
+  2. Configure PLL: RCC_CFGR.PLLSRC=1 (HSE), PLLMUL=0b0111 (x9)
+     -> 8 MHz x 9 = 72 MHz. PLL config only while PLL is OFF.
+  3. Flash latency FIRST: FLASH_ACR.LATENCY=0b010 (2 wait states,
+     required for 48 < HCLK <= 72 MHz) + PRFTBE=1 (prefetch).
+  4. Enable PLL: RCC_CR.PLLON=1, wait PLLRDY.
+  5. Switch: RCC_CFGR.SW=0b10 (PLL), wait until SWS=0b10.
+- Bus prescalers (RCC_CFGR): HPRE (AHB, /1 -> HCLK=72 MHz),
+  PPRE1 (APB1, must be /2 -> 36 MHz max!), PPRE2 (APB2, /1 -> 72 MHz).
+- Key registers: RCC_CR (0x00, HSEON/HSERDY/PLLON/PLLRDY),
+  RCC_CFGR (0x04, SW/SWS/HPRE/PPRE1/PPRE2/PLLSRC/PLLMUL),
+  RCC_AHBENR (0x14, GPIOAEN bit 17, CRCEN bit 6, FLITFEN bit 4),
+  RCC_APB2ENR (0x18, USART1EN bit 14),
+  RCC_CSR (0x24, LSION/LSIRDY + reset-cause flags IWDGRSTF bit 29).
+- CSS (Clock Security System): HSE failure -> NMI + automatic HSI
+  fallback if CSSON=1.
+- Timing: HSE startup typ. 2 ms (crystal-dependent); PLL lock < 200 us.
+
+5. FLASH MEMORY (RM0316 ch4, interface base 0x40022000)
+--------------------------------------------------------------------------------
+- 256 KB main flash, page size 2 KB (128 pages), 0x08000000-0x0803FFFF.
+- Write granularity: half-word (16-bit) only. Erase granularity: page or
+  mass erase.
+- Programming sequence: unlock (FLASH_KEYR <- 0x45670123 then
+  0xCDEF89AB), set FLASH_CR.PG=1, write half-word, wait FLASH_SR.BSY=0,
+  check EOP. Erase: FLASH_CR.PER=1, FLASH_AR=page address,
+  FLASH_CR.STRT=1, wait BSY=0.
+- Timing (datasheet): half-word program typ 53.5 us (max ~60 us);
+  page erase typ 22 ms, max 40 ms; mass erase max 40 ms.
+  NOTE: PDS-PERF-004 says page erase <= 50 ms - compatible with the
+  40 ms max.
+- Errors: FLASH_SR.WRPERR (write-protected), PGERR (programming error -
+  location not erased). Both must be checked and cleared.
+- Read: any width, zero wait state below 24 MHz, 2 WS at 72 MHz (see RCC
+  step 3 above).
+- Option bytes at 0x1FFFF800 (read protection, nBOOT1, watchdog SW/HW).
+
+6. GPIO (RM0316 ch11, GPIOA base 0x48000000)
+--------------------------------------------------------------------------------
+- Registers per port: MODER (2 bits/pin: 00 input, 01 output, 10
+  alternate, 11 analog), OTYPER (0 push-pull), OSPEEDR, PUPDR,
+  IDR/ODR, BSRR (atomic set/reset - preferred for LED), AFRL/AFRH.
+- Project pins:
+  PA5  = LED: MODER=01 (output), OTYPER=0 (push-pull), OSPEEDR=low/2MHz.
+  PA9  = USART1_TX: MODER=10 (AF), AF7 in AFRH.
+  PA10 = USART1_RX: MODER=10 (AF), AF7 in AFRH.
+- Clock enable before any access: RCC_AHBENR.GPIOAEN (bit 17).
+- Max toggle speed far exceeds 1 Hz LED need; no timing constraint.
+
+7. USART1 (RM0316 ch29, base 0x40013800, clocked from APB2 = 72 MHz)
+--------------------------------------------------------------------------------
+- Config 115200 8N1: USART1->BRR = fCK / baud = 72000000 / 115200 = 625
+  (0x271) with OVER8=0 (oversampling by 16).
+- Sequence: enable clock (RCC_APB2ENR.USART1EN), configure GPIO AF7,
+  set BRR, set CR1.TE + CR1.RE, then CR1.UE=1.
+- Status flags (ISR): TXE (transmit register empty), TC (transmission
+  complete), RXNE (read data ready), ORE (overrun), FE (framing), PE
+  (parity). Errors cleared through ICR.
+- Data: TDR (write), RDR (read).
+- Interrupt: IRQn 37, enable RXNEIE for interrupt-driven RX (PDS-UART-003).
+- Timing check: 256 bytes at 115200 baud 8N1 = 256 x 10 bits / 115200
+  = 22.2 ms -> PDS-UART-005 (<= 30 ms) is feasible.
+
+8. SysTick (PM0214 §4.5, core peripheral, base 0xE000E010)
+--------------------------------------------------------------------------------
+- Registers: STK_CTRL (ENABLE bit0, TICKINT bit1, CLKSOURCE bit2 -
+  1=HCLK 72 MHz), STK_LOAD (24-bit reload), STK_VAL, STK_CALIB.
+- 1 ms tick at 72 MHz: STK_LOAD = 72000 - 1 = 71999 (fits 24-bit max
+  16,777,215). CLKSOURCE=1, TICKINT=1, ENABLE=1.
+- SysTick exception is vector [15]; keep the ISR minimal (increment
+  uint32_t tick counter).
+- uint32_t ms counter wraps after 2^32 ms = 49.7 days (PDS-TICK-004).
+
+9. IWDG — INDEPENDENT WATCHDOG (RM0316 ch25, base 0x40003000)
+--------------------------------------------------------------------------------
+- Clocked by LSI (~40 kHz, 30-60 kHz range - inaccurate; design margins!).
+- Registers: IWDG_KR (key: 0xCCCC start, 0xAAAA refresh, 0x5555 enable
+  register access), IWDG_PR (prescaler /4../256), IWDG_RLR (12-bit
+  reload, max 4095).
+- 1 s timeout at 40 kHz: prescaler /32 (PR=0b011) -> 1.25 kHz; RLR=1250
+  -> ~1.0 s. With LSI at 30-60 kHz the real timeout spans ~0.67-1.33 s;
+  refreshing every <= 500 ms (PDS-WDG-004) keeps margin even at the
+  fastest LSI.
+- Once started, IWDG CANNOT be stopped except by reset (matches
+  PDS-WDG-003 / CON-009).
+- IWDGRSTF flag in RCC_CSR tells firmware the last reset was a watchdog
+  reset (useful for boot diagnostics).
+- Hardware-watchdog option bit exists (starts IWDG automatically at
+  power-on) - project uses software start during bootloader init.
+
+10. CRC UNIT (RM0316 ch6, base 0x40023000)
+--------------------------------------------------------------------------------
+- Fixed polynomial 0x4C11DB7 (CRC-32 Ethernet), 32-bit data register.
+- Registers: CRC_DR (feed words / read result), CRC_CR (RESET bit 0 -
+  resets computation to 0xFFFFFFFF), CRC_IDR (8-bit scratch).
+- Usage: enable clock (RCC_AHBENR.CRCEN bit 6), set CRC_CR.RESET=1,
+  write firmware words sequentially to CRC_DR, read CRC_DR for result.
+- Computation: 4 AHB cycles per 32-bit word -> 224 KB (57344 words) ~
+  229k cycles ~ 3.2 ms at 72 MHz. PDS-CRC-003 (<= 100 ms) has huge margin.
+- NOTE: hardware processes 32-bit words - the firmware image length must
+  be handled word-aligned (pad or handle trailing bytes explicitly in
+  design).
+
+11. RESET SOURCES (RM0316 ch9.1 + RCC_CSR flags)
+--------------------------------------------------------------------------------
+- POR/PDR (power-on/down), NRST pin, software reset (AIRCR.SYSRESETREQ,
+  PM0214), IWDG reset, WWDG reset, low-power reset.
+- RCC_CSR flags (sticky until RMVF): PINRSTF, PORRSTF, SFTRSTF,
+  IWDGRSTF, WWDGRSTF, LPWRRSTF - readable at boot to report reset cause
+  over UART.
+
+12. CROSS-CUTTING CONSTRAINTS FOR REQUIREMENTS
+--------------------------------------------------------------------------------
+- APB1 max 36 MHz -> PPRE1 divider /2 is MANDATORY at 72 MHz SYSCLK.
+- Flash latency 2 WS is MANDATORY before switching SYSCLK to 72 MHz.
+- IWDG timing tolerance (LSI 30-60 kHz) -> any watchdog-window
+  requirement must carry that tolerance.
+- Half-word-only flash writes -> firmware update protocol must deliver
+  even-sized chunks or pad.
+- CCM-SRAM (0x10000000) is NOT accessible by DMA - do not place DMA
+  buffers there (project currently uses no DMA; constraint noted for
+  derived requirements).
+- Vector table relocation (VTOR) required when jumping to the
+  application at 0x08008000.
+================================================================================
+END OF HW SUMMARY
+================================================================================

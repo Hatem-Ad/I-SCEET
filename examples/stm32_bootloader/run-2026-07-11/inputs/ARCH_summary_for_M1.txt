@@ -1,0 +1,98 @@
+I-SCEET — SYSTEM ARCHITECTURE SUMMARY FOR M1
+Source: SYS-ARCH_I-SCEET.docx
+Document: ARCH v2.0 / BASELINE, STM32F303VCT6 Bootloader + Drivers + Minimal Application
+Purpose: compact M1 input. This file preserves the architecture decisions M1 needs to write SRD Section III and generate HLRs consistent with the system architecture.
+
+ARCHITECTURE ROLE
+ARCH is a primary input to M1 alongside PDS and hardware documentation. M1 shall preserve architectural meaning and shall not invent blocks, states, interfaces, memory regions, or data flows beyond this summary. PDS v3.1 is authoritative for the current 20 PDS IDs; this ARCH defines architecture, modules, state machine, memory map, interfaces, and safety mechanisms.
+
+STATIC ARCHITECTURE
+The system has three layers:
+- Application Layer: app_main, LED blink at 1 Hz, validates end-to-end toolchain output.
+- Bootloader Layer: boot_manager, responsible for hardware initialization, CRC verification, firmware update, and jump to application.
+- Driver Layer: clk_driver, flash_driver, uart_driver, gpio_driver, crc_module, wdg_driver, systick_driver. These isolate bootloader/application logic from register-level hardware access.
+
+Design principles: bare-metal, no RTOS, deterministic execution, layered design, application never accesses hardware directly, watchdog active from boot, CRC verification before application jump, DO-178C DAL A objective alignment, MC/DC achievable on all modules.
+
+SOFTWARE MODULES
+- boot_manager.c/.h: bootloader coordination, depends on all drivers.
+- clk_driver.c/.h: clock/RCC configuration, depends on isceet_types.
+- flash_driver.c/.h: internal flash operations, depends on isceet_types and systick_driver.
+- uart_driver.c/.h: USART1 serial communication, depends on isceet_types and systick_driver.
+- gpio_driver.c/.h: GPIO configuration/control, depends on isceet_types.
+- crc_module.c/.h: hardware CRC-32 computation, depends on isceet_types.
+- wdg_driver.c/.h: IWDG watchdog services, depends on isceet_types.
+- systick_driver.c/.h: 1 ms timebase, depends on isceet_types.
+- app_main.c/.h: LED blink application, depends on gpio_driver, uart_driver, wdg_driver.
+- isceet_types.h: shared types only, not a subsystem.
+
+Subsystems producing LLRs: BOOT, CLK, FLASH, UART, GPIO, CRC, TICK, WDG, APP. SYS is cross-cutting safety behavior, not a separate runtime module.
+
+INITIALIZATION ORDER
+1. clk_driver_init(): all peripherals depend on system clock.
+2. systick_driver_init(): timeout functions depend on SysTick.
+3. gpio_driver_init(): pin configuration before peripheral use.
+4. uart_driver_init(): debug output available after this step.
+5. flash_driver_init(): flash ready before CRC computation.
+6. crc_module_init(): CRC unit reset before computation.
+7. wdg_driver_init(): safety guardian active before CRC verification.
+8. boot_manager_process(): CRC verify and jump after all initialization succeeds.
+
+DYNAMIC ARCHITECTURE — BOOTLOADER STATE MACHINE
+- RESET: entered on power-on or watchdog reset; always transitions to S1 INIT_CLK.
+- S1 INIT_CLK: configures HSE + PLL to 72 MHz; CLK OK -> S2, failure -> S6.
+- S2 INIT_PERIPH: initializes SysTick, GPIO, UART, Flash, CRC; all OK -> S3, any failure -> S6.
+- S3 INIT_WDG: starts IWDG with 1 s timeout; watchdog on -> S4.
+- S4 VERIFY_CRC: computes and compares CRC-32; CRC OK -> S5, CRC fail -> S6.
+- S5 JUMP_APP: sets MSP and jumps to application; transition to APP_RUNNING is irreversible.
+- S6 ERROR_STATE: sends UART diagnostic and fast LED blink; remains in loop until watchdog reset.
+- S7 APP_RUNNING: application executes normally; watchdog miss -> S8.
+- S8 WDG_RESET: IWDG fires system reset; automatic transition to RESET.
+
+DATA FLOWS
+1. Clock config: clk_driver -> RCC registers; PLL multiplier and prescalers configure 72 MHz.
+2. UART config: uart_driver -> USART1 registers; 115200 baud 8N1.
+3. Firmware binary: Flash at 0x08008000 -> crc_module; raw bytes fed to hardware CRC unit.
+4. CRC-32 result: crc_module -> boot_manager; compared to stored value at 0x08007FFC.
+5. Boot status: boot_manager -> uart_driver; ASCII OK or FAIL diagnostic.
+6. Application vector address: boot_manager -> Cortex-M4 core; MSP from 0x08008000, PC from 0x08008004.
+
+INTERFACES
+- Clock: RCC + HSE on PD0/PD1 oscillator pins, HSE 8 MHz -> PLL -> 72 MHz, input crystal.
+- Serial/debug: USART1 on PA9 TX and PA10 RX, 115200 baud 8N1, bidirectional.
+- Flash storage: internal Flash, 256 KB from 0x08000000, read/write/erase.
+- Status LED: GPIOA PA5, push-pull output 2 MHz.
+- CRC engine: hardware CRC, CRC-32 polynomial 0x04C11DB7.
+- Watchdog: IWDG, internal LSI approximately 40 kHz, 1 s timeout.
+- Timebase: SysTick, 1 ms interrupt at 72 MHz.
+
+AUTHORITATIVE MEMORY ARCHITECTURE
+- Vector Table: 0x08000000–0x080001FF, 512 B, Cortex-M4 IRQ vectors.
+- Bootloader Code: 0x08000200–0x08007FF7, about 31 KB, boot_manager + all 7 drivers.
+- Firmware Metadata: 0x08007FF8–0x08007FFF, 8 B, app size 4 B + CRC-32 4 B.
+- Application Code: 0x08008000–0x0803FFFF, 224 KB, app_main LED blink.
+- Bootloader Stack: 0x20000000–0x20001FFF, 8 KB, stack grows down.
+- Driver Buffers: 0x20002000–0x20003FFF, 8 KB, UART buffer and static module variables.
+- Application RAM: 0x20004000–0x20009FFF, 24 KB, application stack and data.
+
+SAFETY ARCHITECTURE
+- CRC-32 verification using hardware CRC before jump covers corrupted firmware image.
+- IWDG watchdog with 1 s timeout, refreshed every 500 ms, covers software hang/infinite loop.
+- Initialization error detection: all init functions return ISCEET_Status_t and are checked; covers hardware peripheral failure.
+- Static allocation only: no malloc/free; covers heap fragmentation/overflow.
+- No recursion: bounded stack depth for DAL A stack safety.
+- 100% MC/DC on all source files targets untested code-path risk under DO-178C DAL A.
+
+ARCHITECTURE DIAGRAM SOURCE FOR SRD STATIC VIEW
+[External reset/power] -> boot_manager
+boot_manager -> clk_driver, systick_driver, gpio_driver, uart_driver, flash_driver, crc_module, wdg_driver
+flash_driver -> internal Flash 0x08000000-0x0803FFFF
+crc_module -> hardware CRC unit
+uart_driver -> USART1 PA9/PA10
+app_main -> gpio_driver, uart_driver, wdg_driver
+app_main -> GPIOA PA5 LED
+
+ARCHITECTURE DIAGRAM SOURCE FOR SRD DYNAMIC VIEW
+RESET -> INIT_CLK -> INIT_PERIPH -> INIT_WDG -> VERIFY_CRC -> JUMP_APP -> APP_RUNNING
+Failure from INIT_CLK/INIT_PERIPH/VERIFY_CRC -> ERROR_STATE -> WDG_RESET -> RESET
+APP_RUNNING watchdog miss -> WDG_RESET -> RESET
